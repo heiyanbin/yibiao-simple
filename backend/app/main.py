@@ -4,11 +4,67 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
+import sys
+import logging
+from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
 import fastapi.middleware.cors
 import starlette.middleware.cors
 
 from .config import settings
 from .routers import config, document, outline, content, search, expand
+
+
+def setup_logging():
+    """配置日志系统"""
+    # 日志目录
+    log_dir = Path.home() / ".ai_write_helper" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "app.log"
+
+    # 根日志器
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+
+    # 日志格式
+    log_format = logging.Formatter(
+        "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+
+    # 文件处理器 - 按天滚动，保留7天
+    file_handler = TimedRotatingFileHandler(
+        log_file,
+        when="midnight",
+        interval=1,
+        backupCount=7,
+        encoding="utf-8"
+    )
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(log_format)
+    file_handler.suffix = "%Y-%m-%d"
+
+    # 控制台处理器
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(log_format)
+
+    # 添加处理器
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+
+    # 降低第三方库的日志级别
+    logging.getLogger("uvicorn").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+    return logging.getLogger(__name__)
+
+
+# 初始化日志
+logger = setup_logging()
+logger.info(f"日志系统初始化完成，日志文件: {Path.home() / '.ai_write_helper' / 'logs' / 'app.log'}")
 
 # 创建FastAPI应用实例
 app = FastAPI(
@@ -16,6 +72,19 @@ app = FastAPI(
     version=settings.app_version,
     description="基于FastAPI的AI写标书助手后端API"
 )
+logger.info(f"FastAPI应用创建: {settings.app_name} v{settings.app_version}")
+
+
+@app.on_event("startup")
+async def startup_event():
+    """应用启动事件"""
+    logger.info("应用启动完成")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """应用关闭事件"""
+    logger.info("应用正在关闭...")
 
 # 添加CORS中间件
 app.add_middleware(

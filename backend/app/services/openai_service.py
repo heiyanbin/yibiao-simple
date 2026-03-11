@@ -3,10 +3,13 @@ import openai
 from typing import Dict, Any, List, AsyncGenerator
 import json
 import asyncio
+import logging
 
 from ..utils.outline_util import get_random_indexes, calculate_nodes_distribution, generate_one_outline_json_by_level1
 from ..utils.json_util import check_json
 from ..utils.config_manager import config_manager
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIService:
@@ -37,6 +40,7 @@ class OpenAIService:
                     chat_models.append(model.id)
             return sorted(list(set(chat_models)))
         except Exception as e:
+            logger.error(f"获取模型列表失败: {str(e)}", exc_info=True)
             raise Exception(f"获取模型列表失败: {str(e)}")
     
     async def stream_chat_completion(
@@ -60,6 +64,7 @@ class OpenAIService:
                     yield chunk.choices[0].delta.content
 
         except Exception as e:
+            logger.error(f"流式聊天请求失败: {str(e)}", exc_info=True)
             yield f"错误: {str(e)}"
 
     async def _collect_stream_text(
@@ -111,14 +116,14 @@ class OpenAIService:
             prefix = f"{log_prefix} " if log_prefix else ""
 
             if attempt >= max_retries:
-                print(f"{prefix}check_json 校验失败，已达到最大重试次数({max_retries})：{last_error_msg}")
+                logger.warning(f"{prefix}check_json 校验失败，已达到最大重试次数({max_retries})：{last_error_msg}")
                 if raise_on_fail:
                     raise Exception(f"{prefix}check_json 校验失败: {last_error_msg}")
                 # 不抛异常，返回最后一次内容（保持原有行为）
                 return full_content
 
             attempt += 1
-            print(f"{prefix}check_json 校验失败，进行第 {attempt}/{max_retries} 次重试：{last_error_msg}")
+            logger.info(f"{prefix}check_json 校验失败，进行第 {attempt}/{max_retries} 次重试：{last_error_msg}")
             await asyncio.sleep(0.5)
 
     async def generate_content_for_outline(self, outline: Dict[str, Any], project_overview: str = "") -> Dict[str, Any]:
@@ -137,6 +142,7 @@ class OpenAIService:
             return result_outline
             
         except Exception as e:
+            logger.error(f"处理过程中发生错误: {str(e)}", exc_info=True)
             raise Exception(f"处理过程中发生错误: {str(e)}")
     
     async def _process_outline_recursive(self, chapters: list, parent_chapters: list = None, project_overview: str = ""):
@@ -248,10 +254,11 @@ class OpenAIService:
                 yield chunk
 
         except Exception as e:
-            print(f"生成章节内容时出错: {str(e)}")
+            logger.error(f"生成章节内容时出错: {str(e)}", exc_info=True)
             yield f"错误: {str(e)}"
             
     async def generate_outline_v2(self, overview: str, requirements: str) -> Dict[str, Any]:
+        logger.info("开始生成目录 v2...")
         schema_json = json.dumps([
             {
                 "rating_item": "原评分项",
@@ -323,9 +330,8 @@ class OpenAIService:
             for i, level1_node in enumerate(level_l1)
         ]
         outline = await asyncio.gather(*tasks)
-        
-        
-        
+
+        logger.info(f"目录生成完成，共 {len(outline)} 个一级标题")
         return {"outline": outline}
     
     async def process_level1_node(self, i, level1_node, nodes_distribution, level_l1, overview, requirements):
@@ -333,7 +339,7 @@ class OpenAIService:
 
         # 生成json
         json_outline = generate_one_outline_json_by_level1(level1_node["new_title"], i + 1, nodes_distribution)
-        print(f"正在处理第{i+1}章: {level1_node['new_title']}")
+        logger.info(f"正在处理第{i+1}章: {level1_node['new_title']}")
         
         # 其他标题
         other_outline = "\n".join([f"{j+1}. {node['new_title']}" 

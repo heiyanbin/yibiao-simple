@@ -117,7 +117,7 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
         onOutlineGenerated(outlineJson);
         setMessage({ type: 'success', text: '目录结构生成完成' });
         setStreamingContent(''); // 清空流式内容
-        
+
         // 默认展开所有项目
         const allIds = new Set<string>();
         const collectIds = (items: OutlineItem[]) => {
@@ -129,10 +129,15 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
           });
         };
         collectIds(outlineJson.outline);
-        setExpandedItems(allIds);
-        
-      } catch (parseError) {
-        throw new Error('解析目录结构失败');
+
+      } catch (parseError: any) {
+        console.error('JSON解析错误:', parseError);
+        console.error('原始内容:', result);
+        // 显示更详细的错误信息和原始内容
+        const errorMsg = `解析目录结构失败: ${parseError.message}\n\n原始响应前200字符: ${result.substring(0, 200)}`;
+        setMessage({ type: 'error', text: errorMsg });
+        setStreamingContent(result); // 保留原始内容便于调试
+        return;
       }
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message || '目录生成失败' });

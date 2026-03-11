@@ -322,9 +322,13 @@ def build_exe():
         return False
     
     # 构建exe - 使用更详细的参数，增加进程管理相关导入
+    # 注意：--add-data 在Windows用分号(;)，在Unix/macOS用冒号(:)
+    import platform
+    data_sep = ";" if platform.system() == "Windows" else ":"
+
     pyinstaller_cmd = (
-        "pyinstaller --onefile --name=\"yibiao-simple\" "
-        "--add-data=\"backend;backend\" "
+        f'pyinstaller --onefile --name="yibiao-simple" '
+        f'--add-data="backend{data_sep}backend" '
         "--hidden-import=uvicorn --hidden-import=uvicorn.logging --hidden-import=uvicorn.loops "
         "--hidden-import=uvicorn.loops.auto --hidden-import=uvicorn.protocols "
         "--hidden-import=uvicorn.protocols.http --hidden-import=uvicorn.protocols.http.auto "
@@ -348,6 +352,7 @@ def build_exe():
         "--hidden-import=playwright --hidden-import=playwright.async_api --hidden-import=playwright.sync_api "
         "--hidden-import=seleniumbase --hidden-import=seleniumbase.core --hidden-import=seleniumbase.fixtures "
         "--hidden-import=undetected_chromedriver --hidden-import=asyncio_throttle "
+        "--hidden-import=multiprocessing "
         "--console app_launcher.py"
     )
     
