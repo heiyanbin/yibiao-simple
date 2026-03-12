@@ -225,7 +225,7 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
     <div className="max-w-4xl mx-auto space-y-8">
       {/* 文件上传区域 */}
       <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">📄 文档上传</h2>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">📄 文档上传（招标文件）</h2>
         
         <div 
           className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-gray-400 transition-colors cursor-pointer"
