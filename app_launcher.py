@@ -36,25 +36,12 @@ else:
     input("按回车键退出...")
 
 
-def setup_launcher_logging():
-    """配置启动器日志"""
-    log_dir = Path.home() / ".ai_write_helper" / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / "app.log"
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-            logging.FileHandler(log_file, encoding="utf-8")
-        ]
-    )
+def get_logger():
+    """获取启动器日志器（日志由backend/app/main.py统一配置）"""
     return logging.getLogger("launcher")
 
 
-logger = setup_launcher_logging()
+logger = get_logger()
 
 # 全局变量用于进程管理
 uvicorn_server = None
