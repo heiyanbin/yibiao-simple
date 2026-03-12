@@ -3,7 +3,9 @@
  */
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// 生产环境可设置 REACT_APP_API_URL="" 使用相对路径
+const API_BASE_URL = process.env.REACT_APP_API_URL ?? 'http://localhost:8000';
+console.log('[API] API_BASE_URL:', API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
