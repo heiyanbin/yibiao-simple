@@ -8,6 +8,7 @@ DEFAULT_SSE_HEADERS: Dict[str, str] = {
     "Cache-Control": "no-cache",
     "Connection": "keep-alive",
     "Content-Type": "text/event-stream",
+    "X-Accel-Buffering": "no",  # 禁用nginx缓冲，确保流式响应正常工作
 }
 
 
