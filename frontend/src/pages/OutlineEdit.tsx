@@ -1,10 +1,15 @@
 /**
  * 目录编辑页面
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { OutlineData, OutlineItem } from '../types';
-import { outlineApi, expandApi } from '../services/api';
-import { ChevronRightIcon, ChevronDownIcon, DocumentTextIcon, PencilIcon, TrashIcon, PlusIcon } from '@heroicons/react/24/outline';
+import { outlineApi, expandApi, configApi } from '../services/api';
+import { ChevronRightIcon, ChevronDownIcon, DocumentTextIcon, PencilIcon, TrashIcon, PlusIcon, ChevronUpIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+
+// localStorage keys for custom prompts
+const STORAGE_KEYS = {
+  FULL_OUTLINE_PROMPT: 'custom_full_outline_prompt',
+};
 
 interface OutlineEditProps {
   projectOverview: string;
@@ -30,6 +35,53 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
   const [uploadedExpand, setuploadedExpand] = useState(false);
   const [oldOutline, setOldOutline] = useState<string | null>(null);
   const [oldDocument, setOldDocument] = useState<string | null>(null);
+
+  // 高级设置展开状态
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // 默认提示词（从后端获取）
+  const [defaultPrompts, setDefaultPrompts] = useState<{ full_outline: string }>({
+    full_outline: ''
+  });
+
+  // 自定义提示词（从 localStorage 加载）
+  const [customFullOutlinePrompt, setCustomFullOutlinePrompt] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.FULL_OUTLINE_PROMPT) || '';
+  });
+
+  // 获取默认提示词
+  useEffect(() => {
+    const fetchPrompts = async () => {
+      try {
+        const response = await configApi.getPrompts();
+        if (response.data.success && response.data.prompts) {
+          const outlinePrompts = response.data.prompts.outline_generation || {};
+          setDefaultPrompts({
+            full_outline: outlinePrompts.full_outline || ''
+          });
+        }
+      } catch (error) {
+        console.error('获取默认提示词失败:', error);
+      }
+    };
+    fetchPrompts();
+  }, []);
+
+  // 保存自定义提示词到 localStorage
+  const saveCustomPrompt = (value: string) => {
+    if (value.trim()) {
+      localStorage.setItem(STORAGE_KEYS.FULL_OUTLINE_PROMPT, value);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.FULL_OUTLINE_PROMPT);
+    }
+    setCustomFullOutlinePrompt(value);
+  };
+
+  // 恢复默认提示词
+  const resetToDefault = () => {
+    localStorage.removeItem(STORAGE_KEYS.FULL_OUTLINE_PROMPT);
+    setCustomFullOutlinePrompt('');
+  };
 
   // 处理方案扩写文件上传
   const handleExpandUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -74,6 +126,7 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
         uploaded_expand: uploadedExpand,
         old_outline: oldOutline || undefined,
         old_document: oldDocument || undefined,
+        custom_prompt: customFullOutlinePrompt || undefined,
       });
 
       const reader = response.body?.getReader();
@@ -548,7 +601,56 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
             )}
           </button>
 
+          {/* 高级设置展开按钮 */}
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            title="高级设置"
+          >
+            {showAdvanced ? (
+              <ChevronUpIcon className="w-4 h-4" />
+            ) : (
+              <ChevronDownIcon className="w-4 h-4" />
+            )}
+            <span className="ml-2">高级设置</span>
+          </button>
+
         </div>
+
+        {/* 高级设置区域 */}
+        {showAdvanced && (
+          <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+            <h4 className="text-sm font-medium text-gray-800 mb-4">提示词设置</h4>
+            <p className="text-xs text-gray-500 mb-4">
+              自定义目录生成提示词。留空则使用默认提示词。修改后自动保存到浏览器本地。
+            </p>
+
+            {/* 目录生成提示词 */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  目录生成提示词
+                </label>
+                {customFullOutlinePrompt && (
+                  <button
+                    onClick={resetToDefault}
+                    className="inline-flex items-center px-2 py-1 text-xs text-gray-600 hover:text-blue-600"
+                    title="恢复默认"
+                  >
+                    <ArrowPathIcon className="w-3 h-3 mr-1" />
+                    恢复默认
+                  </button>
+                )}
+              </div>
+              <textarea
+                value={customFullOutlinePrompt}
+                onChange={(e) => saveCustomPrompt(e.target.value)}
+                placeholder={defaultPrompts.full_outline || '加载中...'}
+                className="w-full h-40 p-3 border border-gray-300 rounded-lg text-xs focus:ring-blue-500 focus:border-blue-500 resize-none"
+              />
+            </div>
+          </div>
+        )}
 
         {/* 显示已上传的方案扩写文件 */}
         {expandFile && (
@@ -596,7 +698,7 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
               添加目录项
             </button>
           </div>
-          <div className="border rounded-lg p-4 max-h-96 overflow-y-auto">
+          <div className="border rounded-lg p-4">
             {outlineData.outline.map(item => renderOutlineItem(item))}
           </div>
         </div>

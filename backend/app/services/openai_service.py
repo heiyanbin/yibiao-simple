@@ -8,6 +8,7 @@ import logging
 from ..utils.outline_util import get_random_indexes, calculate_nodes_distribution, generate_one_outline_json_by_level1
 from ..utils.json_util import check_json
 from ..utils.config_manager import config_manager
+from ..utils.prompt_manager import get_outline_level1_prompt, get_outline_level2_3_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -257,7 +258,13 @@ class OpenAIService:
             logger.error(f"生成章节内容时出错: {str(e)}", exc_info=True)
             yield f"错误: {str(e)}"
             
-    async def generate_outline_v2(self, overview: str, requirements: str) -> Dict[str, Any]:
+    async def generate_outline_v2(
+        self,
+        overview: str,
+        requirements: str,
+        custom_level1_prompt: str = None,
+        custom_level2_3_prompt: str = None
+    ) -> Dict[str, Any]:
         logger.info("开始生成目录 v2...")
         schema_json = json.dumps([
             {
@@ -266,25 +273,18 @@ class OpenAIService:
             }
         ])
 
+        # 使用自定义提示词或默认提示词
+        level1_prompt_base = custom_level1_prompt if custom_level1_prompt else get_outline_level1_prompt()
         system_prompt = f"""
-            ### 角色
-            你是专业的标书编写专家，擅长根据项目需求编写标书。
-            
-            ### 人物
-            1. 根据得到的项目概述(overview)和评分要求(requirements)，撰写技术标部分的一级提纲
-            
-            ### 说明
-            1. 只设计一级标题，数量要和"评分要求"一一对应
-            2. 一级标题名称要进行简单修改，不能完全使用"评分要求"中的文字
+            {level1_prompt_base}
 
-            
             ### Output Format in JSON
             {schema_json}
 
             """
         user_prompt = f"""
             ### 项目信息
-            
+
             <overview>
             {overview}
             </overview>
@@ -326,41 +326,30 @@ class OpenAIService:
         
         # 并发生成每个一级节点的提纲，保持结果顺序
         tasks = [
-            self.process_level1_node(i, level1_node, nodes_distribution, level_l1, overview, requirements)
+            self.process_level1_node(i, level1_node, nodes_distribution, level_l1, overview, requirements, custom_level2_3_prompt)
             for i, level1_node in enumerate(level_l1)
         ]
         outline = await asyncio.gather(*tasks)
 
         logger.info(f"目录生成完成，共 {len(outline)} 个一级标题")
         return {"outline": outline}
-    
-    async def process_level1_node(self, i, level1_node, nodes_distribution, level_l1, overview, requirements):
+
+    async def process_level1_node(self, i, level1_node, nodes_distribution, level_l1, overview, requirements, custom_level2_3_prompt: str = None):
         """处理单个一级节点的函数"""
 
         # 生成json
         json_outline = generate_one_outline_json_by_level1(level1_node["new_title"], i + 1, nodes_distribution)
         logger.info(f"正在处理第{i+1}章: {level1_node['new_title']}")
-        
+
         # 其他标题
-        other_outline = "\n".join([f"{j+1}. {node['new_title']}" 
-                            for j, node in enumerate(level_l1) 
+        other_outline = "\n".join([f"{j+1}. {node['new_title']}"
+                            for j, node in enumerate(level_l1)
                             if j!= i])
 
+        # 使用自定义提示词或默认提示词
+        level2_3_prompt_base = custom_level2_3_prompt if custom_level2_3_prompt else get_outline_level2_3_prompt()
         system_prompt = f"""
-    ### 角色
-    你是专业的标书编写专家，擅长根据项目需求编写标书。
-    
-    ### 任务
-    1. 根据得到项目概述(overview)、评分要求(requirements)补全标书的提纲的二三级目录
-    
-    ### 说明
-    1. 你将会得到一段json，这是提纲的其中一个章节，你需要再原结构上补全标题(title)和描述(description)
-    2. 二级标题根据一级标题撰写,三级标题根据二级标题撰写
-    3. 补全的内容要参考项目概述(overview)、评分要求(requirements)等项目信息
-    4. 你还会收到其他章节的标题(other_outline)，你需要确保本章节的内容不会包含其他章节的内容
-    
-    ### 注意事项
-    在原json上补全信息，禁止修改json结构，禁止修改一级标题
+    {level2_3_prompt_base}
 
     ### Output Format in JSON
     {json_outline}
@@ -376,7 +365,7 @@ class OpenAIService:
     <requirements>
     {requirements}
     </requirements>
-    
+
     <other_outline>
     {other_outline}
     </other_outline>

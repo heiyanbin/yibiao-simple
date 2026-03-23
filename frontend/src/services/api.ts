@@ -46,6 +46,7 @@ export interface OutlineRequest {
   uploaded_expand?: boolean;
   old_outline?: string;
   old_document?: string;
+  custom_prompt?: string;
 }
 
 export interface ContentGenerationRequest {

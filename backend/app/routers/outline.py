@@ -35,7 +35,9 @@ async def generate_outline(request: OutlineRequest):
                 # 后台计算主任务
                 compute_task = asyncio.create_task(openai_service.generate_outline_v2(
                     overview=request.overview,
-                    requirements=request.requirements
+                    requirements=request.requirements,
+                    custom_level1_prompt=request.custom_level1_prompt,
+                    custom_level2_3_prompt=request.custom_level2_3_prompt
                 ))
 
                 # 在等待计算完成期间发送心跳，保持连接（发送空字符串chunk）
@@ -100,7 +102,9 @@ async def generate_outline_stream(request: OutlineRequest):
             try:
                 if request.uploaded_expand:
                     logger.info("使用方案扩写模式生成目录")
-                    system_prompt, user_prompt = prompt_manager.generate_outline_with_old_prompt(request.overview, request.requirements, request.old_outline)
+                    system_prompt, user_prompt = prompt_manager.generate_outline_with_old_prompt(
+                        request.overview, request.requirements, request.old_outline, request.custom_prompt
+                    )
                     messages = [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
@@ -119,7 +123,9 @@ async def generate_outline_stream(request: OutlineRequest):
 
                 else:
                     logger.info("使用普通模式生成目录")
-                    system_prompt, user_prompt = prompt_manager.generate_outline_prompt(request.overview, request.requirements)
+                    system_prompt, user_prompt = prompt_manager.generate_outline_prompt(
+                        request.overview, request.requirements, request.custom_prompt
+                    )
 
                     messages = [
                         {"role": "system", "content": system_prompt},

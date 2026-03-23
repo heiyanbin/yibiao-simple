@@ -72,6 +72,9 @@ class OutlineRequest(BaseModel):
     uploaded_expand: Optional[bool] = Field(False, description="是否已上传方案扩写文件")
     old_outline: Optional[str] = Field(None, description="上传的方案扩写文件解析出的旧目录JSON")
     old_document: Optional[str] = Field(None, description="上传的方案扩写文件解析出的旧文档")
+    custom_prompt: Optional[str] = Field(None, description="自定义目录生成提示词（用于 generate-stream）")
+    custom_level1_prompt: Optional[str] = Field(None, description="自定义一级目录生成提示词（用于 generate）")
+    custom_level2_3_prompt: Optional[str] = Field(None, description="自定义二三级目录生成提示词（用于 generate）")
 
 class ContentGenerationRequest(BaseModel):
     """内容生成请求"""

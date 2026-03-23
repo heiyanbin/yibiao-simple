@@ -66,7 +66,12 @@ def get_all_default_prompts() -> dict:
     prompts = _load_prompts()
     return {
         "document_analysis": prompts.get('document_analysis', {}),
-        "outline_generation": prompts.get('outline_generation', {})
+        "outline_generation": {
+            "full_outline": prompts.get('outline_generation', {}).get('full_outline', ''),
+            "level1": prompts.get('outline_generation', {}).get('level1', ''),
+            "level2_3": prompts.get('outline_generation', {}).get('level2_3', ''),
+            "chapter_content": prompts.get('outline_generation', {}).get('chapter_content', '')
+        }
     }
 
 
@@ -75,6 +80,32 @@ def reload_prompts():
     global _prompts_cache
     _prompts_cache = None
     return _load_prompts()
+
+
+# ============ 目录生成提示词 ============
+
+def get_outline_level1_prompt() -> str:
+    """获取一级目录生成的提示词"""
+    prompts = _load_prompts()
+    return prompts.get('outline_generation', {}).get('level1', '')
+
+
+def get_outline_level2_3_prompt() -> str:
+    """获取二三级目录生成的提示词"""
+    prompts = _load_prompts()
+    return prompts.get('outline_generation', {}).get('level2_3', '')
+
+
+def get_full_outline_prompt() -> str:
+    """获取完整目录生成的提示词（用于 generate-stream API）"""
+    prompts = _load_prompts()
+    return prompts.get('outline_generation', {}).get('full_outline', '')
+
+
+def get_chapter_content_prompt() -> str:
+    """获取章节内容生成的提示词"""
+    prompts = _load_prompts()
+    return prompts.get('outline_generation', {}).get('chapter_content', '')
 
 
 # ============ 大纲生成提示词（保留原有函数兼容性）============
@@ -125,14 +156,17 @@ JSON格式要求：
 """
 
 
-def generate_outline_prompt(overview, requirements):
+def generate_outline_prompt(overview, requirements, custom_prompt=None):
     """生成目录结构的提示词"""
-    prompts = _load_prompts()
-    level1_prompt = prompts.get('outline_generation', {}).get('level1', '')
+    # 使用自定义提示词或默认提示词
+    if custom_prompt:
+        full_prompt = custom_prompt
+    else:
+        full_prompt = get_full_outline_prompt()
 
     # 如果配置文件中有提示词，使用配置的
-    if level1_prompt:
-        system_prompt = level1_prompt + """
+    if full_prompt:
+        system_prompt = full_prompt + """
 
 JSON格式要求：
 {
@@ -146,12 +180,19 @@ JSON格式要求：
           "id": "1.1",
           "title": "",
           "description": "",
-          "children":[
-              {
-                "id": "1.1.1",
-                "title": "",
-                "description": ""
-              }
+          "children": [
+            {
+              "id": "1.1.1",
+              "title": "",
+              "description": "",
+              "children": [
+                {
+                  "id": "1.1.1.1",
+                  "title": "",
+                  "description": ""
+                }
+              ]
+            }
           ]
         }
       ]
@@ -167,7 +208,7 @@ JSON格式要求：
 1. 目录结构要全面覆盖技术标的所有必要章节
 2. 章节名称要专业、准确，符合投标文件规范
 3. 一级目录名称要与技术评分要求中的章节名称一致，如果技术评分要求中没有章节名称，则结合技术评分要求中的内容，生成一级目录名称
-4. 一共包括三级目录
+4. 目录层级一般为三级，但对于重点章节或内容较多的章节，可以扩展到四级
 5. 返回标准JSON格式，包含章节编号、标题、描述和子章节
 6. 除了JSON结果外，不要输出任何其他内容
 
@@ -183,12 +224,19 @@ JSON格式要求：
           "id": "1.1",
           "title": "",
           "description": "",
-          "children":[
-              {
-                "id": "1.1.1",
-                "title": "",
-                "description": ""
-              }
+          "children": [
+            {
+              "id": "1.1.1",
+              "title": "",
+              "description": "",
+              "children": [
+                {
+                  "id": "1.1.1.1",
+                  "title": "",
+                  "description": ""
+                }
+              ]
+            }
           ]
         }
       ]
@@ -209,9 +257,9 @@ JSON格式要求：
     return system_prompt, user_prompt
 
 
-def generate_outline_with_old_prompt(overview, requirements, old_outline):
+def generate_outline_with_old_prompt(overview, requirements, old_outline, custom_prompt=None):
     """结合旧目录生成新目录的提示词"""
-    system_prompt, _ = generate_outline_prompt(overview, requirements)
+    system_prompt, _ = generate_outline_prompt(overview, requirements, custom_prompt)
 
     # 修改为包含旧目录的版本
     system_prompt_with_old = system_prompt.replace(
