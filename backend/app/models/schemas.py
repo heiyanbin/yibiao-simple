@@ -44,6 +44,7 @@ class AnalysisRequest(BaseModel):
     """文档分析请求"""
     file_content: str = Field(..., description="文档内容")
     analysis_type: AnalysisType = Field(..., description="分析类型")
+    custom_prompt: Optional[str] = Field(None, description="自定义提示词（可选）")
 
 
 class OutlineItem(BaseModel):

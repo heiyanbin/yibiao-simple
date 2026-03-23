@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from ..models.schemas import ConfigRequest, ConfigResponse, ModelListResponse
 from ..services.openai_service import OpenAIService
 from ..utils.config_manager import config_manager
+from ..utils.prompt_manager import get_all_default_prompts
 
 router = APIRouter(prefix="/api/config", tags=["配置管理"])
 
@@ -79,3 +80,16 @@ async def get_available_models(config: ConfigRequest):
             success=False,
             message=f"获取模型列表失败: {str(e)}"
         )
+
+
+@router.get("/prompts")
+async def get_prompts():
+    """获取默认提示词"""
+    try:
+        prompts = get_all_default_prompts()
+        return {
+            "success": True,
+            "prompts": prompts
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取提示词失败: {str(e)}")

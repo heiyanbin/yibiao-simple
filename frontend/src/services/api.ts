@@ -37,6 +37,7 @@ export interface FileUploadResponse {
 export interface AnalysisRequest {
   file_content: string;
   analysis_type: 'overview' | 'requirements';
+  custom_prompt?: string;
 }
 
 export interface OutlineRequest {
@@ -72,6 +73,10 @@ export const configApi = {
   // 获取可用模型
   getModels: (config: ConfigData) =>
     api.post('/api/config/models', config),
+
+  // 获取默认提示词
+  getPrompts: () =>
+    api.get('/api/config/prompts'),
 };
 
 // 文档相关API

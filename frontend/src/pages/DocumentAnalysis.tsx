@@ -3,9 +3,15 @@
  */
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { documentApi } from '../services/api';
-import { CloudArrowUpIcon, DocumentIcon, PencilIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { documentApi, configApi } from '../services/api';
+import { CloudArrowUpIcon, DocumentIcon, PencilIcon, CheckIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { draftStorage } from '../utils/draftStorage';
+
+// localStorage keys for custom prompts
+const STORAGE_KEYS = {
+  OVERVIEW_PROMPT: 'custom_overview_prompt',
+  REQUIREMENTS_PROMPT: 'custom_requirements_prompt',
+};
 
 interface DocumentAnalysisProps {
   fileContent: string;
@@ -34,6 +40,76 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
   // 编辑状态
   const [editingField, setEditingField] = useState<'overview' | 'requirements' | null>(null);
   const [editValue, setEditValue] = useState('');
+
+  // 高级设置展开状态
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // 默认提示词（从后端获取）
+  const [defaultPrompts, setDefaultPrompts] = useState<{ overview: string; requirements: string }>({
+    overview: '',
+    requirements: ''
+  });
+
+  // 自定义提示词（从 localStorage 加载）
+  const [customOverviewPrompt, setCustomOverviewPrompt] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.OVERVIEW_PROMPT) || '';
+  });
+  const [customRequirementsPrompt, setCustomRequirementsPrompt] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.REQUIREMENTS_PROMPT) || '';
+  });
+
+  // 获取默认提示词
+  useEffect(() => {
+    const fetchPrompts = async () => {
+      try {
+        const response = await configApi.getPrompts();
+        if (response.data.success && response.data.prompts) {
+          const docPrompts = response.data.prompts.document_analysis || {};
+          setDefaultPrompts({
+            overview: docPrompts.overview || '',
+            requirements: docPrompts.requirements || ''
+          });
+        }
+      } catch (error) {
+        console.error('获取默认提示词失败:', error);
+      }
+    };
+    fetchPrompts();
+  }, []);
+
+  // 保存自定义提示词到 localStorage
+  const saveCustomPrompt = (type: 'overview' | 'requirements', value: string) => {
+    const key = type === 'overview' ? STORAGE_KEYS.OVERVIEW_PROMPT : STORAGE_KEYS.REQUIREMENTS_PROMPT;
+    if (value.trim()) {
+      localStorage.setItem(key, value);
+    } else {
+      localStorage.removeItem(key);
+    }
+    if (type === 'overview') {
+      setCustomOverviewPrompt(value);
+    } else {
+      setCustomRequirementsPrompt(value);
+    }
+  };
+
+  // 恢复默认提示词
+  const resetToDefault = (type: 'overview' | 'requirements') => {
+    const key = type === 'overview' ? STORAGE_KEYS.OVERVIEW_PROMPT : STORAGE_KEYS.REQUIREMENTS_PROMPT;
+    localStorage.removeItem(key);
+    if (type === 'overview') {
+      setCustomOverviewPrompt('');
+    } else {
+      setCustomRequirementsPrompt('');
+    }
+  };
+
+  // 获取实际使用的提示词
+  const getEffectivePrompt = (type: 'overview' | 'requirements') => {
+    if (type === 'overview') {
+      return customOverviewPrompt || defaultPrompts.overview;
+    }
+    return customRequirementsPrompt || defaultPrompts.requirements;
+  };
 
   // 同步外部传入的值到本地状态
   useEffect(() => {
@@ -210,9 +286,11 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
 
       // 第一步：分析项目概述
       setCurrentAnalysisStep('overview');
+      const overviewPrompt = getEffectivePrompt('overview');
       const overviewResponse = await documentApi.analyzeDocumentStream({
         file_content: fileContent,
         analysis_type: 'overview',
+        custom_prompt: customOverviewPrompt ? overviewPrompt : undefined,
       });
 
       await processStream(overviewResponse, (chunk) => {
@@ -226,9 +304,11 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
 
       // 第二步：分析技术评分要求
       setCurrentAnalysisStep('requirements');
+      const requirementsPrompt = getEffectivePrompt('requirements');
       const requirementsResponse = await documentApi.analyzeDocumentStream({
         file_content: fileContent,
         analysis_type: 'requirements',
+        custom_prompt: customRequirementsPrompt ? requirementsPrompt : undefined,
       });
 
       await processStream(requirementsResponse, (chunk) => {
@@ -260,21 +340,21 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="max-w-6xl mx-auto space-y-8">
       {/* 文件上传区域 */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">📄 文档上传（招标文件）</h2>
-        
-        <div 
-          className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-gray-400 transition-colors cursor-pointer"
+      <div className="bg-white rounded-lg shadow p-4">
+        <h2 className="text-lg font-semibold text-gray-900 mb-2">📄 文档上传（招标文件）</h2>
+
+        <div
+          className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors cursor-pointer"
           onClick={() => fileInputRef.current?.click()}
         >
-          <CloudArrowUpIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <div className="mt-4">
-            <p className="text-lg text-gray-600">
+          <CloudArrowUpIcon className="mx-auto h-8 w-8 text-gray-400" />
+          <div className="mt-2">
+            <p className="text-sm text-gray-600">
               {uploadedFile ? uploadedFile.name : '点击选择文件或拖拽文件到这里'}
             </p>
-            <p className="text-sm text-gray-500 mt-2">
+            <p className="text-xs text-gray-500 mt-1">
               支持 PDF 和 Word 文档，最大 10MB
             </p>
           </div>
@@ -322,8 +402,8 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
                   </div>
-                  {currentAnalysisStep === 'overview' ? '正在分析项目概述...' : 
-                   currentAnalysisStep === 'requirements' ? '正在分析技术评分要求...' : 
+                  {currentAnalysisStep === 'overview' ? '正在分析项目概述...' :
+                   currentAnalysisStep === 'requirements' ? '正在分析技术评分要求...' :
                    '正在解析标书...'}
                 </>
               ) : (
@@ -333,7 +413,83 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
                 </>
               )}
             </button>
+
+            {/* 高级设置展开按钮 */}
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="ml-3 inline-flex items-center justify-center px-4 py-3 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              title="高级设置"
+            >
+              {showAdvanced ? (
+                <ChevronUpIcon className="w-5 h-5" />
+              ) : (
+                <ChevronDownIcon className="w-5 h-5" />
+              )}
+              <span className="ml-2">高级设置</span>
+            </button>
           </div>
+
+          {/* 高级设置区域 */}
+          {showAdvanced && (
+            <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <h4 className="text-sm font-medium text-gray-800 mb-4">提示词设置</h4>
+              <p className="text-xs text-gray-500 mb-4">
+                自定义解析提示词。留空则使用默认提示词。修改后自动保存到浏览器本地。
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 项目概述提示词 */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      项目概述提示词
+                    </label>
+                    {customOverviewPrompt && (
+                      <button
+                        onClick={() => resetToDefault('overview')}
+                        className="inline-flex items-center px-2 py-1 text-xs text-gray-600 hover:text-blue-600"
+                        title="恢复默认"
+                      >
+                        <ArrowPathIcon className="w-3 h-3 mr-1" />
+                        恢复默认
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    value={customOverviewPrompt}
+                    onChange={(e) => saveCustomPrompt('overview', e.target.value)}
+                    placeholder={defaultPrompts.overview || '加载中...'}
+                    className="w-full h-32 p-3 border border-gray-300 rounded-lg text-xs focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  />
+                </div>
+
+                {/* 技术评分要求提示词 */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      技术评分要求提示词
+                    </label>
+                    {customRequirementsPrompt && (
+                      <button
+                        onClick={() => resetToDefault('requirements')}
+                        className="inline-flex items-center px-2 py-1 text-xs text-gray-600 hover:text-blue-600"
+                        title="恢复默认"
+                      >
+                        <ArrowPathIcon className="w-3 h-3 mr-1" />
+                        恢复默认
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    value={customRequirementsPrompt}
+                    onChange={(e) => saveCustomPrompt('requirements', e.target.value)}
+                    placeholder={defaultPrompts.requirements || '加载中...'}
+                    className="w-full h-32 p-3 border border-gray-300 rounded-lg text-xs focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 流式分析内容显示 */}
           {analyzing && (((currentAnalysisStep === 'overview') && streamingOverview) || ((currentAnalysisStep === 'requirements') && streamingRequirements)) && (
