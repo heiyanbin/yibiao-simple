@@ -1,10 +1,10 @@
 /**
  * 文档分析页面
  */
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { documentApi } from '../services/api';
-import { CloudArrowUpIcon, DocumentIcon } from '@heroicons/react/24/outline';
+import { CloudArrowUpIcon, DocumentIcon, PencilIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { draftStorage } from '../utils/draftStorage';
 
 interface DocumentAnalysisProps {
@@ -30,6 +30,44 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
 
   const [localOverview, setLocalOverview] = useState(projectOverview);
   const [localRequirements, setLocalRequirements] = useState(techRequirements);
+
+  // 编辑状态
+  const [editingField, setEditingField] = useState<'overview' | 'requirements' | null>(null);
+  const [editValue, setEditValue] = useState('');
+
+  // 同步外部传入的值到本地状态
+  useEffect(() => {
+    setLocalOverview(projectOverview);
+  }, [projectOverview]);
+
+  useEffect(() => {
+    setLocalRequirements(techRequirements);
+  }, [techRequirements]);
+
+  // 开始编辑
+  const startEdit = (field: 'overview' | 'requirements') => {
+    setEditingField(field);
+    setEditValue(field === 'overview' ? localOverview : localRequirements);
+  };
+
+  // 保存编辑
+  const saveEdit = () => {
+    if (editingField === 'overview') {
+      setLocalOverview(editValue);
+      onAnalysisComplete(editValue, localRequirements);
+    } else if (editingField === 'requirements') {
+      setLocalRequirements(editValue);
+      onAnalysisComplete(localOverview, editValue);
+    }
+    setEditingField(null);
+    setEditValue('');
+  };
+
+  // 取消编辑
+  const cancelEdit = () => {
+    setEditingField(null);
+    setEditValue('');
+  };
   
 
   // 处理换行符的函数 - 只做基本转换
@@ -281,7 +319,7 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
                   <div className="animate-spin -ml-1 mr-3 h-5 w-5 text-white">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
                   </div>
                   {currentAnalysisStep === 'overview' ? '正在分析项目概述...' : 
@@ -317,29 +355,105 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* 项目概述 */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                项目概述
-              </label>
+              <div className="flex items-center justify-between mb-3">
+                <label className="block text-sm font-medium text-gray-700">
+                  项目概述
+                </label>
+                {editingField !== 'overview' && localOverview && !analyzing && (
+                  <button
+                    onClick={() => startEdit('overview')}
+                    className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                    title="编辑"
+                  >
+                    <PencilIcon className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
               <div className="w-full p-4 border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 max-h-80 overflow-y-auto bg-white shadow-sm">
-                <div className="prose prose-sm max-w-none text-gray-800">
-                  <ReactMarkdown components={markdownComponents}>
-                    {localOverview || '项目概述将在这里显示...'}
-                  </ReactMarkdown>
-                </div>
+                {editingField === 'overview' ? (
+                  <div className="flex flex-col h-full">
+                    <textarea
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      className="flex-1 w-full min-h-[200px] border-0 focus:ring-0 focus:outline-none resize-none text-sm text-gray-800"
+                      placeholder="项目概述内容..."
+                    />
+                    <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-gray-200">
+                      <button
+                        onClick={cancelEdit}
+                        className="inline-flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
+                      >
+                        <XMarkIcon className="w-4 h-4 mr-1" />
+                        取消
+                      </button>
+                      <button
+                        onClick={saveEdit}
+                        className="inline-flex items-center px-3 py-1 text-sm text-white bg-blue-600 rounded hover:bg-blue-700"
+                      >
+                        <CheckIcon className="w-4 h-4 mr-1" />
+                        保存
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="prose prose-sm max-w-none text-gray-800">
+                    <ReactMarkdown components={markdownComponents}>
+                      {localOverview || '项目概述将在这里显示...'}
+                    </ReactMarkdown>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* 技术评分要求 */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                技术评分要求
-              </label>
+              <div className="flex items-center justify-between mb-3">
+                <label className="block text-sm font-medium text-gray-700">
+                  技术评分要求
+                </label>
+                {editingField !== 'requirements' && localRequirements && !analyzing && (
+                  <button
+                    onClick={() => startEdit('requirements')}
+                    className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                    title="编辑"
+                  >
+                    <PencilIcon className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
               <div className="w-full p-4 border border-gray-300 rounded-lg focus-within:ring-green-500 focus-within:border-green-500 max-h-80 overflow-y-auto bg-white shadow-sm">
-                <div className="prose prose-sm max-w-none text-gray-800">
-                  <ReactMarkdown components={markdownComponents}>
-                    {localRequirements || '技术评分要求将在这里显示...'}
-                  </ReactMarkdown>
-                </div>
+                {editingField === 'requirements' ? (
+                  <div className="flex flex-col h-full">
+                    <textarea
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      className="flex-1 w-full min-h-[200px] border-0 focus:ring-0 focus:outline-none resize-none text-sm text-gray-800"
+                      placeholder="技术评分要求内容..."
+                    />
+                    <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-gray-200">
+                      <button
+                        onClick={cancelEdit}
+                        className="inline-flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
+                      >
+                        <XMarkIcon className="w-4 h-4 mr-1" />
+                        取消
+                      </button>
+                      <button
+                        onClick={saveEdit}
+                        className="inline-flex items-center px-3 py-1 text-sm text-white bg-green-600 rounded hover:bg-green-700"
+                      >
+                        <CheckIcon className="w-4 h-4 mr-1" />
+                        保存
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="prose prose-sm max-w-none text-gray-800">
+                    <ReactMarkdown components={markdownComponents}>
+                      {localRequirements || '技术评分要求将在这里显示...'}
+                    </ReactMarkdown>
+                  </div>
+                )}
               </div>
             </div>
           </div>
