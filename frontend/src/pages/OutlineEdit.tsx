@@ -630,22 +630,22 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-medium text-gray-700">
                   目录生成提示词
+                  {customFullOutlinePrompt && (
+                    <span className="ml-2 text-xs text-blue-600">(已自定义)</span>
+                  )}
                 </label>
-                {customFullOutlinePrompt && (
-                  <button
-                    onClick={resetToDefault}
-                    className="inline-flex items-center px-2 py-1 text-xs text-gray-600 hover:text-blue-600"
-                    title="恢复默认"
-                  >
-                    <ArrowPathIcon className="w-3 h-3 mr-1" />
-                    恢复默认
-                  </button>
-                )}
+                <button
+                  onClick={resetToDefault}
+                  className="inline-flex items-center px-2 py-1 text-xs text-gray-600 hover:text-blue-600"
+                  title="恢复默认"
+                >
+                  <ArrowPathIcon className="w-3 h-3 mr-1" />
+                  恢复默认
+                </button>
               </div>
               <textarea
-                value={customFullOutlinePrompt}
+                value={customFullOutlinePrompt || defaultPrompts.full_outline || '加载中...'}
                 onChange={(e) => saveCustomPrompt(e.target.value)}
-                placeholder={defaultPrompts.full_outline || '加载中...'}
                 className="w-full h-40 p-3 border border-gray-300 rounded-lg text-xs focus:ring-blue-500 focus:border-blue-500 resize-none"
               />
             </div>

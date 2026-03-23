@@ -526,29 +526,33 @@ const ContentEdit: React.FC<ContentEditProps> = ({
               onClick={() => setShowAdvanced(!showAdvanced)}
               className="w-full px-4 py-3 flex items-center justify-between text-sm text-gray-600 hover:bg-gray-50 rounded-lg"
             >
-              <span className="font-medium">高级设置：章节内容生成提示词</span>
+              <span className="font-medium">
+                高级设置：章节内容生成提示词
+                {customPrompt && (
+                  <span className="ml-2 text-xs text-blue-600">(已自定义)</span>
+                )}
+              </span>
               <ChevronDownIcon className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
             </button>
             {showAdvanced && (
               <div className="px-4 pb-4 border-t border-gray-200">
                 <div className="mt-3">
                   <textarea
-                    value={customPrompt}
+                    value={customPrompt || defaultPrompts.chapter_content || '加载中...'}
                     onChange={(e) => setCustomPrompt(e.target.value)}
                     onBlur={saveCustomPrompt}
-                    placeholder={defaultPrompts.chapter_content || '输入自定义提示词...'}
                     className="w-full h-48 p-3 border border-gray-300 rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
                   />
                   <div className="mt-2 flex items-center justify-between">
                     <p className="text-xs text-gray-500">
-                      留空则使用默认提示词。修改后自动保存到浏览器本地存储。
+                      修改后自动保存到浏览器本地存储。
                     </p>
                     <button
                       onClick={resetToDefault}
                       className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
                     >
                       <ArrowPathIcon className="w-3 h-3 mr-1" />
-                      重置为默认
+                      恢复默认
                     </button>
                   </div>
                 </div>

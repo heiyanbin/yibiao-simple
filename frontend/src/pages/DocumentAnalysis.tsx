@@ -443,22 +443,22 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-sm font-medium text-gray-700">
                       项目概述提示词
+                      {customOverviewPrompt && (
+                        <span className="ml-2 text-xs text-blue-600">(已自定义)</span>
+                      )}
                     </label>
-                    {customOverviewPrompt && (
-                      <button
-                        onClick={() => resetToDefault('overview')}
-                        className="inline-flex items-center px-2 py-1 text-xs text-gray-600 hover:text-blue-600"
-                        title="恢复默认"
-                      >
-                        <ArrowPathIcon className="w-3 h-3 mr-1" />
-                        恢复默认
-                      </button>
-                    )}
+                    <button
+                      onClick={() => resetToDefault('overview')}
+                      className="inline-flex items-center px-2 py-1 text-xs text-gray-600 hover:text-blue-600"
+                      title="恢复默认"
+                    >
+                      <ArrowPathIcon className="w-3 h-3 mr-1" />
+                      恢复默认
+                    </button>
                   </div>
                   <textarea
-                    value={customOverviewPrompt}
+                    value={customOverviewPrompt || defaultPrompts.overview || '加载中...'}
                     onChange={(e) => saveCustomPrompt('overview', e.target.value)}
-                    placeholder={defaultPrompts.overview || '加载中...'}
                     className="w-full h-32 p-3 border border-gray-300 rounded-lg text-xs focus:ring-blue-500 focus:border-blue-500 resize-none"
                   />
                 </div>
@@ -468,22 +468,22 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-sm font-medium text-gray-700">
                       技术评分要求提示词
+                      {customRequirementsPrompt && (
+                        <span className="ml-2 text-xs text-blue-600">(已自定义)</span>
+                      )}
                     </label>
-                    {customRequirementsPrompt && (
-                      <button
-                        onClick={() => resetToDefault('requirements')}
-                        className="inline-flex items-center px-2 py-1 text-xs text-gray-600 hover:text-blue-600"
-                        title="恢复默认"
-                      >
-                        <ArrowPathIcon className="w-3 h-3 mr-1" />
-                        恢复默认
-                      </button>
-                    )}
+                    <button
+                      onClick={() => resetToDefault('requirements')}
+                      className="inline-flex items-center px-2 py-1 text-xs text-gray-600 hover:text-blue-600"
+                      title="恢复默认"
+                    >
+                      <ArrowPathIcon className="w-3 h-3 mr-1" />
+                      恢复默认
+                    </button>
                   </div>
                   <textarea
-                    value={customRequirementsPrompt}
+                    value={customRequirementsPrompt || defaultPrompts.requirements || '加载中...'}
                     onChange={(e) => saveCustomPrompt('requirements', e.target.value)}
-                    placeholder={defaultPrompts.requirements || '加载中...'}
                     className="w-full h-32 p-3 border border-gray-300 rounded-lg text-xs focus:ring-blue-500 focus:border-blue-500 resize-none"
                   />
                 </div>
