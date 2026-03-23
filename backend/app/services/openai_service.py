@@ -8,7 +8,7 @@ import logging
 from ..utils.outline_util import get_random_indexes, calculate_nodes_distribution, generate_one_outline_json_by_level1
 from ..utils.json_util import check_json
 from ..utils.config_manager import config_manager
-from ..utils.prompt_manager import get_outline_level1_prompt, get_outline_level2_3_prompt
+from ..utils.prompt_manager import get_outline_level1_prompt, get_outline_level2_3_prompt, get_chapter_content_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +184,7 @@ class OpenAIService:
                 # 递归处理子章节
                 await self._process_outline_recursive(chapter['children'], current_parent_chapters, project_overview)
     
-    async def _generate_chapter_content(self, chapter: dict, parent_chapters: list = None, sibling_chapters: list = None, project_overview: str = "") -> AsyncGenerator[str, None]:
+    async def _generate_chapter_content(self, chapter: dict, parent_chapters: list = None, sibling_chapters: list = None, project_overview: str = "", custom_prompt: str = None) -> AsyncGenerator[str, None]:
         """
         为单个章节流式生成内容
 
@@ -193,6 +193,7 @@ class OpenAIService:
             parent_chapters: 上级章节列表，每个元素包含章节id、标题和描述
             sibling_chapters: 同级章节列表，避免内容重复
             project_overview: 项目概述信息，提供项目背景和要求
+            custom_prompt: 自定义提示词（可选）
 
         Yields:
             生成的内容流
@@ -202,17 +203,8 @@ class OpenAIService:
             chapter_title = chapter.get('title', '未命名章节')
             chapter_description = chapter.get('description', '')
 
-            # 构建提示词
-            system_prompt = """你是一个专业的标书编写专家，负责为投标文件的技术标部分生成具体内容。
-
-要求：
-1. 内容要专业、准确，与章节标题和描述保持一致
-2. 这是技术方案，不是宣传报告，注意朴实无华，不要假大空
-3. 语言要正式、规范，符合标书写作要求，但不要使用奇怪的连接词，不要让人觉得内容像是AI生成的
-4. 内容要详细具体，避免空泛的描述
-5. 注意避免与同级章节内容重复，保持内容的独特性和互补性
-6. 直接返回章节内容，不生成标题，不要任何额外说明或格式标记
-"""
+            # 使用自定义提示词或默认提示词
+            system_prompt = custom_prompt if custom_prompt else get_chapter_content_prompt()
 
             # 构建上下文信息
             context_info = ""

@@ -28,7 +28,8 @@ async def generate_chapter_content(request: ChapterContentRequest):
             chapter=request.chapter,
             parent_chapters=request.parent_chapters,
             sibling_chapters=request.sibling_chapters,
-            project_overview=request.project_overview
+            project_overview=request.project_overview,
+            custom_prompt=request.custom_prompt
         ):
             content += chunk
         
@@ -62,7 +63,8 @@ async def generate_chapter_content_stream(request: ChapterContentRequest):
                     chapter=request.chapter,
                     parent_chapters=request.parent_chapters,
                     sibling_chapters=request.sibling_chapters,
-                    project_overview=request.project_overview
+                    project_overview=request.project_overview,
+                    custom_prompt=request.custom_prompt
                 ):
                     full_content += chunk
                     # 实时发送内容片段

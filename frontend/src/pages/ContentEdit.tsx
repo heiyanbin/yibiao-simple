@@ -4,11 +4,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { OutlineData, OutlineItem } from '../types';
-import { DocumentTextIcon, PlayIcon, DocumentArrowDownIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUpIcon } from '@heroicons/react/24/outline';
-import { contentApi, ChapterContentRequest, documentApi } from '../services/api';
+import { DocumentTextIcon, PlayIcon, DocumentArrowDownIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUpIcon, ChevronDownIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { contentApi, ChapterContentRequest, documentApi, configApi } from '../services/api';
 import { saveAs } from 'file-saver';
-import { Paragraph, TextRun } from 'docx';
 import { draftStorage } from '../utils/draftStorage';
+
+// localStorage key for custom prompt
+const STORAGE_KEY = 'custom_chapter_content_prompt';
 
 interface ContentEditProps {
   outlineData: OutlineData | null;
@@ -40,6 +42,11 @@ const ContentEdit: React.FC<ContentEditProps> = ({
   });
   const [leafItems, setLeafItems] = useState<OutlineItem[]>([]);
   const [showScrollToTop, setShowScrollToTop] = useState(false);
+
+  // 自定义提示词相关状态
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [defaultPrompts, setDefaultPrompts] = useState<{chapter_content?: string}>({});
+  const [customPrompt, setCustomPrompt] = useState<string>('');
 
   // 收集所有叶子节点
   const collectLeafItems = useCallback((items: OutlineItem[]): OutlineItem[] => {
@@ -128,6 +135,44 @@ const ContentEdit: React.FC<ContentEditProps> = ({
     return () => target.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // 加载默认提示词和本地存储的自定义提示词
+  useEffect(() => {
+    const loadPrompts = async () => {
+      try {
+        const response = await configApi.getPrompts();
+        if (response.data?.prompts?.outline_generation) {
+          setDefaultPrompts({
+            chapter_content: response.data.prompts.outline_generation.chapter_content || ''
+          });
+        }
+      } catch (error) {
+        console.error('加载提示词失败:', error);
+      }
+
+      // 从 localStorage 加载自定义提示词
+      const savedPrompt = localStorage.getItem(STORAGE_KEY);
+      if (savedPrompt) {
+        setCustomPrompt(savedPrompt);
+      }
+    };
+    loadPrompts();
+  }, []);
+
+  // 保存自定义提示词
+  const saveCustomPrompt = () => {
+    if (customPrompt.trim()) {
+      localStorage.setItem(STORAGE_KEY, customPrompt.trim());
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  };
+
+  // 重置为默认提示词
+  const resetToDefault = () => {
+    setCustomPrompt('');
+    localStorage.removeItem(STORAGE_KEY);
+  };
+
   // 获取叶子节点的实时内容
   const getLeafItemContent = (itemId: string): string | undefined => {
     const leafItem = leafItems.find(leaf => leaf.id === itemId);
@@ -208,7 +253,8 @@ const ContentEdit: React.FC<ContentEditProps> = ({
         chapter: item,
         parent_chapters: parentChapters,
         sibling_chapters: siblingChapters,
-        project_overview: projectOverview
+        project_overview: projectOverview,
+        custom_prompt: customPrompt.trim() || undefined
       };
 
       const response = await contentApi.generateChapterContentStream(request);
@@ -473,6 +519,42 @@ const ContentEdit: React.FC<ContentEditProps> = ({
               </div>
             </div>
           )}
+
+          {/* 高级设置：自定义提示词 */}
+          <div className="mt-4 border border-gray-200 rounded-lg">
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="w-full px-4 py-3 flex items-center justify-between text-sm text-gray-600 hover:bg-gray-50 rounded-lg"
+            >
+              <span className="font-medium">高级设置：章节内容生成提示词</span>
+              <ChevronDownIcon className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+            </button>
+            {showAdvanced && (
+              <div className="px-4 pb-4 border-t border-gray-200">
+                <div className="mt-3">
+                  <textarea
+                    value={customPrompt}
+                    onChange={(e) => setCustomPrompt(e.target.value)}
+                    onBlur={saveCustomPrompt}
+                    placeholder={defaultPrompts.chapter_content || '输入自定义提示词...'}
+                    className="w-full h-48 p-3 border border-gray-300 rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
+                  />
+                  <div className="mt-2 flex items-center justify-between">
+                    <p className="text-xs text-gray-500">
+                      留空则使用默认提示词。修改后自动保存到浏览器本地存储。
+                    </p>
+                    <button
+                      onClick={resetToDefault}
+                      className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
+                    >
+                      <ArrowPathIcon className="w-3 h-3 mr-1" />
+                      重置为默认
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
