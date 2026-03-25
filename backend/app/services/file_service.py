@@ -506,19 +506,19 @@ class FileService:
             raise Exception(f"Word文档读取失败: {str(e)}")
     
     @staticmethod
-    async def process_uploaded_file(file: UploadFile) -> str:
-        """处理上传的文件并提取文本内容"""
+    async def process_uploaded_file(file: UploadFile) -> tuple[str, str]:
+        """处理上传的文件，返回 (文件路径, 文本内容)"""
         # 检查文件大小
         content = await file.read()
         if len(content) > settings.max_file_size:
             raise Exception(f"文件大小超过限制 ({settings.max_file_size / 1024 / 1024}MB)")
-        
+
         # 重置文件指针
         await file.seek(0)
-        
+
         # 保存文件
         file_path = await FileService.save_uploaded_file(file)
-        
+
         try:
             # 根据文件类型提取文本和图片
             if file.content_type == "application/pdf":
@@ -528,12 +528,10 @@ class FileService:
             else:
                 raise Exception("不支持的文件类型，请上传PDF或Word文档")
 
-            # 成功提取后，使用安全的文件清理方法
-            FileService._safe_file_cleanup(file_path)
-
-            return text
+            # 返回文件路径和文本内容（不删除原始文件，供后续下载）
+            return file_path, text
 
         except Exception as e:
-            # 异常情况下也使用安全的文件清理方法
+            # 异常情况下删除文件
             FileService._safe_file_cleanup(file_path)
             raise e

@@ -45,6 +45,7 @@ class AnalysisRequest(BaseModel):
     file_content: str = Field(..., description="文档内容")
     analysis_type: AnalysisType = Field(..., description="分析类型")
     custom_prompt: Optional[str] = Field(None, description="自定义提示词（可选）")
+    model_name: Optional[str] = Field(None, description="使用的模型名称")
 
 
 class OutlineItem(BaseModel):
@@ -75,6 +76,7 @@ class OutlineRequest(BaseModel):
     custom_prompt: Optional[str] = Field(None, description="自定义目录生成提示词（用于 generate-stream）")
     custom_level1_prompt: Optional[str] = Field(None, description="自定义一级目录生成提示词（用于 generate）")
     custom_level2_3_prompt: Optional[str] = Field(None, description="自定义二三级目录生成提示词（用于 generate）")
+    model_name: Optional[str] = Field(None, description="使用的模型名称")
 
 class ContentGenerationRequest(BaseModel):
     """内容生成请求"""
@@ -89,6 +91,7 @@ class ChapterContentRequest(BaseModel):
     sibling_chapters: Optional[List[Dict[str, Any]]] = Field(None, description="同级章节列表")
     project_overview: str = Field("", description="项目概述")
     custom_prompt: Optional[str] = Field(None, description="自定义章节内容生成提示词")
+    model_name: Optional[str] = Field(None, description="使用的模型名称")
 
 
 class ErrorResponse(BaseModel):

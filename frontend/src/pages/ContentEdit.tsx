@@ -1,21 +1,21 @@
 /**
  * 内容编辑页面 - 完整标书预览和生成
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { OutlineData, OutlineItem } from '../types';
-import { DocumentTextIcon, PlayIcon, DocumentArrowDownIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUpIcon, ChevronDownIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
-import { contentApi, ChapterContentRequest, documentApi, configApi } from '../services/api';
+import { DocumentTextIcon, PlayIcon, DocumentArrowDownIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUpIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { contentApi, ChapterContentRequest, documentApi, configApi, jobsApi } from '../services/api';
 import { saveAs } from 'file-saver';
 import { draftStorage } from '../utils/draftStorage';
-
-// localStorage key for custom prompt
-const STORAGE_KEY = 'custom_chapter_content_prompt';
+import { usePrompts } from '../hooks/usePrompts';
+import PromptSelector from '../components/PromptSelector';
 
 interface ContentEditProps {
   outlineData: OutlineData | null;
   selectedChapter: string;
   onChapterSelect: (chapterId: string) => void;
+  currentJobId: number | null;
 }
 
 interface GenerationProgress {
@@ -31,6 +31,7 @@ const ContentEdit: React.FC<ContentEditProps> = ({
   outlineData,
   selectedChapter,
   onChapterSelect,
+  currentJobId,
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState<GenerationProgress>({
@@ -42,11 +43,45 @@ const ContentEdit: React.FC<ContentEditProps> = ({
   });
   const [leafItems, setLeafItems] = useState<OutlineItem[]>([]);
   const [showScrollToTop, setShowScrollToTop] = useState(false);
-
-  // 自定义提示词相关状态
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // 提示词管理
+  const {
+    prompts,
+    loading: promptsLoading,
+    createPrompt,
+    updatePrompt,
+    getDefaultPrompt,
+  } = usePrompts();
+
+  // 提示词选择状态
+  const [chapterContentPromptId, setChapterContentPromptId] = useState<number | null>(null);
+  const [chapterContentPrompt, setChapterContentPrompt] = useState<string>('');
+
+  // 跟踪是否已初始化提示词选择
+  const promptInitializedRef = useRef(false);
+
+  // 系统内置默认提示词
   const [defaultPrompts, setDefaultPrompts] = useState<{chapter_content?: string}>({});
-  const [customPrompt, setCustomPrompt] = useState<string>('');
+
+  // 初始化时加载默认提示词
+  useEffect(() => {
+    if (prompts.length === 0 || promptInitializedRef.current) return;
+
+    promptInitializedRef.current = true;
+    const defaultPrompt = getDefaultPrompt('chapter_content');
+    if (defaultPrompt) {
+      setChapterContentPromptId(defaultPrompt.id);
+      setChapterContentPrompt(defaultPrompt.content);
+    }
+    // 如果没有默认提示词，保持 null（使用系统内置）
+  }, [prompts, getDefaultPrompt]);
+
+  // 提示词选择回调
+  const handlePromptSelect = (promptId: number | null, content: string) => {
+    setChapterContentPromptId(promptId);
+    setChapterContentPrompt(content);
+  };
 
   // 收集所有叶子节点
   const collectLeafItems = useCallback((items: OutlineItem[]): OutlineItem[] => {
@@ -135,7 +170,7 @@ const ContentEdit: React.FC<ContentEditProps> = ({
     return () => target.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // 加载默认提示词和本地存储的自定义提示词
+  // 加载系统内置默认提示词
   useEffect(() => {
     const loadPrompts = async () => {
       try {
@@ -148,30 +183,9 @@ const ContentEdit: React.FC<ContentEditProps> = ({
       } catch (error) {
         console.error('加载提示词失败:', error);
       }
-
-      // 从 localStorage 加载自定义提示词
-      const savedPrompt = localStorage.getItem(STORAGE_KEY);
-      if (savedPrompt) {
-        setCustomPrompt(savedPrompt);
-      }
     };
     loadPrompts();
   }, []);
-
-  // 保存自定义提示词
-  const saveCustomPrompt = () => {
-    if (customPrompt.trim()) {
-      localStorage.setItem(STORAGE_KEY, customPrompt.trim());
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-  };
-
-  // 重置为默认提示词
-  const resetToDefault = () => {
-    setCustomPrompt('');
-    localStorage.removeItem(STORAGE_KEY);
-  };
 
   // 获取叶子节点的实时内容
   const getLeafItemContent = (itemId: string): string | undefined => {
@@ -254,7 +268,7 @@ const ContentEdit: React.FC<ContentEditProps> = ({
         parent_chapters: parentChapters,
         sibling_chapters: siblingChapters,
         project_overview: projectOverview,
-        custom_prompt: customPrompt.trim() || undefined
+        custom_prompt: chapterContentPrompt.trim() || undefined
       };
 
       const response = await contentApi.generateChapterContentStream(request);
@@ -303,6 +317,14 @@ const ContentEdit: React.FC<ContentEditProps> = ({
                 updatedItem.content = content;
                 // 本地持久化（最终结果）
                 draftStorage.upsertChapterContent(item.id, content);
+                // 保存到后端数据库
+                if (currentJobId) {
+                  try {
+                    await jobsApi.saveContent(currentJobId, item.id, item.title, content);
+                  } catch (e) {
+                    console.warn('保存章节内容到服务器失败:', e);
+                  }
+                }
               } else if (parsed.status === 'error') {
                 throw new Error(parsed.message);
               }
@@ -337,10 +359,19 @@ const ContentEdit: React.FC<ContentEditProps> = ({
   const handleGenerateContent = async () => {
     if (!outlineData || leafItems.length === 0) return;
 
+    // 过滤掉已有内容的章节，只生成未完成的章节
+    const itemsToGenerate = leafItems.filter(item => !item.content);
+
+    if (itemsToGenerate.length === 0) {
+      // 所有章节已生成完成
+      return;
+    }
+
     setIsGenerating(true);
+    const alreadyCompleted = leafItems.length - itemsToGenerate.length;
     setProgress({
       total: leafItems.length,
-      completed: 0,
+      completed: alreadyCompleted,  // 已完成的章节也算进进度
       current: '',
       failed: [],
       generating: new Set<string>()
@@ -350,10 +381,10 @@ const ContentEdit: React.FC<ContentEditProps> = ({
       // 使用5个并发线程生成内容
       const concurrency = 5;
       const updatedItems = [...leafItems];
-      
-      for (let i = 0; i < leafItems.length; i += concurrency) {
-        const batch = leafItems.slice(i, i + concurrency);
-        const promises = batch.map(item => 
+
+      for (let i = 0; i < itemsToGenerate.length; i += concurrency) {
+        const batch = itemsToGenerate.slice(i, i + concurrency);
+        const promises = batch.map(item =>
           generateItemContent(item, outlineData.project_overview || '')
             .then(updatedItem => {
               const index = updatedItems.findIndex(ui => ui.id === updatedItem.id);
@@ -375,10 +406,10 @@ const ContentEdit: React.FC<ContentEditProps> = ({
 
       // 更新状态
       setLeafItems(updatedItems);
-      
+
       // 这里需要更新整个outlineData，但由于我们只有props，需要通过回调通知父组件
       // 暂时只更新本地状态
-      
+
     } catch (error) {
       console.error('生成内容时出错:', error);
     } finally {
@@ -466,6 +497,7 @@ const ContentEdit: React.FC<ContentEditProps> = ({
   }
 
   const completedItems = leafItems.filter(item => item.content).length;
+  const pendingItems = leafItems.length - completedItems;
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -486,11 +518,11 @@ const ContentEdit: React.FC<ContentEditProps> = ({
             <div className="flex items-center space-x-3">
               <button
                 onClick={handleGenerateContent}
-                disabled={isGenerating}
+                disabled={isGenerating || pendingItems === 0}
                 className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <PlayIcon className="w-4 h-4 mr-2" />
-                {isGenerating ? '生成中...' : '生成标书'}
+                {isGenerating ? '生成中...' : pendingItems === 0 ? '已全部生成' : `生成标书 (${pendingItems}个待生成)`}
               </button>
               
               <button
@@ -520,45 +552,41 @@ const ContentEdit: React.FC<ContentEditProps> = ({
             </div>
           )}
 
-          {/* 高级设置：自定义提示词 */}
-          <div className="mt-4 border border-gray-200 rounded-lg">
-            <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="w-full px-4 py-3 flex items-center justify-between text-sm text-gray-600 hover:bg-gray-50 rounded-lg"
-            >
-              <span className="font-medium">
-                高级设置：章节内容生成提示词
-                {customPrompt && (
-                  <span className="ml-2 text-xs text-blue-600">(已自定义)</span>
-                )}
-              </span>
-              <ChevronDownIcon className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
-            </button>
-            {showAdvanced && (
-              <div className="px-4 pb-4 border-t border-gray-200">
-                <div className="mt-3">
-                  <textarea
-                    value={customPrompt || defaultPrompts.chapter_content || '加载中...'}
-                    onChange={(e) => setCustomPrompt(e.target.value)}
-                    onBlur={saveCustomPrompt}
-                    className="w-full h-48 p-3 border border-gray-300 rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
-                  />
-                  <div className="mt-2 flex items-center justify-between">
-                    <p className="text-xs text-gray-500">
-                      修改后自动保存到浏览器本地存储。
-                    </p>
-                    <button
-                      onClick={resetToDefault}
-                      className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
-                    >
-                      <ArrowPathIcon className="w-3 h-3 mr-1" />
-                      恢复默认
-                    </button>
-                  </div>
-                </div>
-              </div>
+          {/* 提示词设置按钮 */}
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="mt-4 inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            {showAdvanced ? (
+              <ChevronUpIcon className="w-4 h-4" />
+            ) : (
+              <ChevronDownIcon className="w-4 h-4" />
             )}
-          </div>
+            <span className="ml-2">提示词设置</span>
+          </button>
+
+          {/* 提示词选择器 */}
+          {showAdvanced && (
+            <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <h4 className="text-sm font-medium text-gray-800 mb-4">提示词设置</h4>
+              <p className="text-xs text-gray-500 mb-4">
+                选择已保存的提示词或使用默认提示词。可以保存新的自定义提示词供后续使用。
+              </p>
+              <PromptSelector
+                promptType="chapter_content"
+                label="章节内容生成提示词"
+                selectedPromptId={chapterContentPromptId}
+                defaultPrompt={defaultPrompts.chapter_content || ''}
+                prompts={prompts}
+                onPromptSelect={handlePromptSelect}
+                onCreatePrompt={async (name, content, isDefault) => {
+                  return createPrompt(name, 'chapter_content', content, isDefault);
+                }}
+                onUpdatePrompt={updatePrompt}
+                loading={promptsLoading}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -597,7 +625,7 @@ const ContentEdit: React.FC<ContentEditProps> = ({
             </div>
             <div className="flex items-center">
               <DocumentTextIcon className="w-4 h-4 text-gray-400 mr-1" />
-              <span>待生成: {leafItems.length - completedItems}</span>
+              <span>待生成: {pendingItems}</span>
             </div>
             {progress.failed.length > 0 && (
               <div className="flex items-center">

@@ -147,14 +147,13 @@ anyio>=4,<5
 pdfplumber==0.11.7
 pymupdf==1.26.4
 docx2python==3.5.0
-requests==2.32.3
-asyncio-throttle==1.0.2
-duckduckgo-search==8.1.1
-beautifulsoup4==4.12.3
-playwright==1.51.0
-seleniumbase==4.33.3
-undetected-chromedriver==3.5.5
-mcp==1.13.1
+aiohttp==3.10.11
+Pillow==10.4.0
+sqlalchemy==2.0.23
+aiosqlite==0.19.0
+bcrypt==4.1.2
+pyjwt==2.8.0
+python-jose[cryptography]==3.3.0
 """
     
     with open("requirements_build.txt", "w", encoding="utf-8") as f:
@@ -243,18 +242,19 @@ hiddenimports = [
     'json',
     'pathlib',
     'asyncio',
-    'duckduckgo_search',
-    'requests',
-    'bs4',
-    'beautifulsoup4',
-    'playwright',
-    'playwright.async_api',
-    'playwright.sync_api',
-    'seleniumbase',
-    'seleniumbase.core',
-    'seleniumbase.fixtures',
-    'undetected_chromedriver',
-    'asyncio_throttle',
+    'sqlalchemy',
+    'sqlalchemy.ext.asyncio',
+    'aiosqlite',
+    'bcrypt',
+    'jwt',
+    'jose',
+    'jose.jwt',
+    'jose.jws',
+    'jose.constants',
+    'jose.exceptions',
+    'jose.utils',
+    'cryptography',
+    'cryptography.fernet',
 ]
 
 a = Analysis(
@@ -347,12 +347,11 @@ def build_exe():
         "--hidden-import=pydantic --hidden-import=pydantic_settings --hidden-import=multipart "
         "--hidden-import=aiofiles --hidden-import=dotenv --hidden-import=json --hidden-import=pathlib "
         "--hidden-import=asyncio --hidden-import=signal --hidden-import=atexit "
-        "--hidden-import=duckduckgo_search --hidden-import=requests "
-        "--hidden-import=bs4 --hidden-import=beautifulsoup4 "
-        "--hidden-import=playwright --hidden-import=playwright.async_api --hidden-import=playwright.sync_api "
-        "--hidden-import=seleniumbase --hidden-import=seleniumbase.core --hidden-import=seleniumbase.fixtures "
-        "--hidden-import=undetected_chromedriver --hidden-import=asyncio_throttle "
         "--hidden-import=multiprocessing "
+        "--hidden-import=sqlalchemy --hidden-import=sqlalchemy.ext.asyncio "
+        "--hidden-import=aiosqlite --hidden-import=bcrypt --hidden-import=jwt "
+        "--hidden-import=jose --hidden-import=jose.jwt --hidden-import=jose.jws "
+        "--hidden-import=cryptography --hidden-import=cryptography.fernet "
         "--console app_launcher.py"
     )
     

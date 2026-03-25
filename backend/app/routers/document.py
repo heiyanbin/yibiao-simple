@@ -1,14 +1,20 @@
 """文档处理相关API路由"""
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 from ..models.schemas import FileUploadResponse, AnalysisRequest, AnalysisType, WordExportRequest
 from ..services.file_service import FileService
 from ..services.openai_service import OpenAIService
-from ..utils.config_manager import config_manager
+from ..utils.system_config import system_config
 from ..utils.prompt_manager import get_default_overview_prompt, get_default_requirements_prompt
 from ..utils.sse import sse_response
+from ..routers.auth import get_current_user_from_request
+from ..models.db_models import Job
+from ..utils.database import get_session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 import json
 import io
+import os
 import re
 import docx
 from docx.shared import Pt
@@ -34,30 +40,47 @@ def set_paragraph_font_simsun(paragraph: docx.text.paragraph.Paragraph) -> None:
 
 
 @router.post("/upload", response_model=FileUploadResponse)
-async def upload_file(file: UploadFile = File(...)):
-    """上传文档文件并提取文本内容"""
+async def upload_file(
+    file: UploadFile = File(...),
+    job_id: int = Query(None),
+    session: AsyncSession = Depends(get_session),
+    current_user = Depends(get_current_user_from_request)
+):
+    """上传文档文件并提取文本内容（需要登录）"""
     try:
         # 检查文件类型
         allowed_types = [
             "application/pdf",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         ]
-        
+
         if file.content_type not in allowed_types:
             return FileUploadResponse(
                 success=False,
                 message="不支持的文件类型，请上传PDF或Word文档"
             )
-        
-        # 处理文件并提取文本
-        file_content = await FileService.process_uploaded_file(file)
-        
+
+        # 处理文件并提取文本，返回文件路径和文本内容
+        file_path, file_content = await FileService.process_uploaded_file(file)
+
+        # 如果提供了 job_id，更新任务记录
+        if job_id:
+            result = await session.execute(
+                select(Job).where(Job.id == job_id, Job.user_id == current_user.id)
+            )
+            job = result.scalar_one_or_none()
+            if job:
+                job.source_file_name = file.filename
+                job.source_file_path = file_path  # 保存文件路径
+                job.file_content = file_content
+                await session.commit()
+
         return FileUploadResponse(
             success=True,
             message=f"文件 {file.filename} 上传成功",
             file_content=file_content
         )
-        
+
     except Exception as e:
         return FileUploadResponse(
             success=False,
@@ -65,18 +88,48 @@ async def upload_file(file: UploadFile = File(...)):
         )
 
 
-@router.post("/analyze-stream")
-async def analyze_document_stream(request: AnalysisRequest):
-    """流式分析文档内容"""
-    try:
-        # 加载配置
-        config = config_manager.load_config()
-        
-        if not config.get('api_key'):
-            raise HTTPException(status_code=400, detail="请先配置OpenAI API密钥")
+@router.get("/download/{job_id}")
+async def download_source_file(
+    job_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session)
+):
+    """下载任务的原始文件"""
+    user = await get_current_user_from_request(request)
 
-        # 创建OpenAI服务实例
-        openai_service = OpenAIService()
+    result = await session.execute(
+        select(Job).where(Job.id == job_id, Job.user_id == user.id)
+    )
+    job = result.scalar_one_or_none()
+
+    if not job:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    if not job.source_file_path or not os.path.exists(job.source_file_path):
+        raise HTTPException(status_code=404, detail="文件不存在或已被删除")
+
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        job.source_file_path,
+        filename=job.source_file_name,
+        media_type="application/octet-stream"
+    )
+
+
+@router.post("/analyze-stream")
+async def analyze_document_stream(
+    request: AnalysisRequest,
+    current_user = Depends(get_current_user_from_request)
+):
+    """流式分析文档内容（需要登录）"""
+    try:
+        # 检查系统是否已配置 API Key
+        if not system_config.is_configured():
+            raise HTTPException(status_code=400, detail="系统未配置 API Key，请联系管理员")
+
+        # 创建OpenAI服务实例，使用请求中的模型或默认模型
+        model_name = getattr(request, 'model_name', None)
+        openai_service = OpenAIService(model_name=model_name)
         
         async def generate():
             # 构建分析提示词
@@ -110,8 +163,11 @@ async def analyze_document_stream(request: AnalysisRequest):
 
 
 @router.post("/export-word")
-async def export_word(request: WordExportRequest):
-    """根据目录数据导出Word文档"""
+async def export_word(
+    request: WordExportRequest,
+    current_user = Depends(get_current_user_from_request)
+):
+    """根据目录数据导出Word文档（需要登录）"""
     try:
         doc = docx.Document()
 

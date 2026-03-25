@@ -12,7 +12,8 @@ import fastapi.middleware.cors
 import starlette.middleware.cors
 
 from .config import settings
-from .routers import config, document, outline, content, search, expand
+from .routers import config, document, outline, content, expand, auth, jobs, prompts, admin
+from .utils.database import init_db, async_session_maker
 
 
 def setup_logging():
@@ -53,6 +54,19 @@ def setup_logging():
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
 
+    # 将 stderr 重定向到日志系统
+    class StderrRedirector:
+        """将 stderr 重定向到日志"""
+        def __init__(self, logger):
+            self.logger = logger
+        def write(self, message):
+            if message.strip():
+                self.logger.error(message.strip())
+        def flush(self):
+            pass
+
+    sys.stderr = StderrRedirector(logging.getLogger("stderr"))
+
     # 降低第三方库的日志级别
     logging.getLogger("uvicorn").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
@@ -78,7 +92,36 @@ logger.info(f"FastAPI应用创建: {settings.app_name} v{settings.app_version}")
 @app.on_event("startup")
 async def startup_event():
     """应用启动事件"""
+    # 初始化数据库
+    await init_db()
+
+    # 创建默认管理员账号
+    await create_default_admin()
+
     logger.info("应用启动完成")
+
+
+async def create_default_admin():
+    """创建默认管理员账号"""
+    from .models.db_models import User
+    from .utils.auth import hash_password
+    from sqlalchemy import select
+
+    async with async_session_maker() as session:
+        # 检查是否存在管理员
+        result = await session.execute(select(User).where(User.is_admin == True))
+        if not result.scalar_one_or_none():
+            # 创建默认管理员
+            admin = User(
+                username="admin",
+                email="admin@example.com",
+                password_hash=hash_password("admin123"),
+                is_admin=True,
+                is_active=True
+            )
+            session.add(admin)
+            await session.commit()
+            logger.info("默认管理员账号已创建: admin / admin123")
 
 
 @app.on_event("shutdown")
@@ -97,10 +140,13 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(config.router)
+app.include_router(auth.router)
+app.include_router(jobs.router)
+app.include_router(prompts.router)
+app.include_router(admin.router)
 app.include_router(document.router)
 app.include_router(outline.router)
 app.include_router(content.router)
-app.include_router(search.router)
 app.include_router(expand.router)
 
 # 健康检查端点

@@ -1,10 +1,11 @@
 """目录相关API路由"""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from ..models.schemas import OutlineRequest, OutlineResponse
 from ..services.openai_service import OpenAIService
-from ..utils.config_manager import config_manager
+from ..utils.system_config import system_config
 from ..utils import prompt_manager
 from ..utils.sse import sse_response
+from ..routers.auth import get_current_user_from_request
 import json
 import asyncio
 import logging
@@ -15,19 +16,21 @@ router = APIRouter(prefix="/api/outline", tags=["目录管理"])
 
 
 @router.post("/generate")
-async def generate_outline(request: OutlineRequest):
-    """生成标书目录结构（以SSE流式返回）"""
+async def generate_outline(
+    request: OutlineRequest,
+    current_user = Depends(get_current_user_from_request)
+):
+    """生成标书目录结构（以SSE流式返回，需要登录）"""
     try:
         logger.info("收到目录生成请求 (generate)")
-        # 加载配置
-        config = config_manager.load_config()
-
-        if not config.get('api_key'):
+        # 检查系统是否已配置 API Key
+        if not system_config.is_configured():
             logger.error("API密钥未配置")
-            raise HTTPException(status_code=400, detail="请先配置OpenAI API密钥")
+            raise HTTPException(status_code=400, detail="系统未配置 API Key，请联系管理员")
 
         # 创建OpenAI服务实例
-        openai_service = OpenAIService()
+        model_name = getattr(request, 'model_name', None)
+        openai_service = OpenAIService(model_name=model_name)
 
         async def generate():
             try:
@@ -84,19 +87,21 @@ async def generate_outline(request: OutlineRequest):
 
 
 @router.post("/generate-stream")
-async def generate_outline_stream(request: OutlineRequest):
-    """流式生成标书目录结构"""
+async def generate_outline_stream(
+    request: OutlineRequest,
+    current_user = Depends(get_current_user_from_request)
+):
+    """流式生成标书目录结构（需要登录）"""
     try:
         logger.info("收到目录生成请求 (generate-stream)")
-        # 加载配置
-        config = config_manager.load_config()
-
-        if not config.get('api_key'):
+        # 检查系统是否已配置 API Key
+        if not system_config.is_configured():
             logger.error("API密钥未配置")
-            raise HTTPException(status_code=400, detail="请先配置OpenAI API密钥")
+            raise HTTPException(status_code=400, detail="系统未配置 API Key，请联系管理员")
 
         # 创建OpenAI服务实例
-        openai_service = OpenAIService()
+        model_name = getattr(request, 'model_name', None)
+        openai_service = OpenAIService(model_name=model_name)
         # request.uploadedExpand
         async def generate():
             try:
@@ -110,16 +115,13 @@ async def generate_outline_stream(request: OutlineRequest):
                         {"role": "user", "content": user_prompt}
                     ]
 
-                    full_content = ""
-                    async for chunk in openai_service.stream_chat_completion(messages, temperature=0.7, response_format={"type": "json_object"}):
-                        full_content += chunk
-                    logger.info(f"方案扩写模式生成完成，内容长度: {len(full_content)}")
                     # 流式返回目录生成结果
-                    # async for chunk in openai_service.stream_chat_completion(messages, temperature=0.7, response_format={"type": "json_object"}):
-                    #     yield f"data: {json.dumps({'chunk': chunk}, ensure_ascii=False)}\n\n"
+                    async for chunk in openai_service.stream_chat_completion(messages, temperature=0.7, response_format={"type": "json_object"}):
+                        yield f"data: {json.dumps({'chunk': chunk}, ensure_ascii=False)}\n\n"
 
                     # 发送结束信号
-                    # yield "data: [DONE]\n\n"
+                    yield "data: [DONE]\n\n"
+                    logger.info("方案扩写模式目录生成完成")
 
                 else:
                     logger.info("使用普通模式生成目录")

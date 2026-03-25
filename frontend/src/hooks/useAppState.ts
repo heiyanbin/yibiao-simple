@@ -2,17 +2,18 @@
  * 应用状态管理Hook
  */
 import { useState, useCallback } from 'react';
-import { AppState, ConfigData, OutlineData } from '../types';
+import { AppState, OutlineData, JobDetail } from '../types';
 import { draftStorage } from '../utils/draftStorage';
+import { jobsApi } from '../services/api';
 
 const initialState: AppState = {
   currentStep: 0,
   config: {
-    api_key: '',
-    base_url: '',
     model_name: 'gpt-3.5-turbo',
   },
+  currentJobId: null,
   fileContent: '',
+  sourceFileName: null,
   projectOverview: '',
   techRequirements: '',
   outlineData: null,
@@ -28,8 +29,8 @@ export const useAppState = () => {
     };
   });
 
-  const updateConfig = useCallback((config: ConfigData) => {
-    setState(prev => ({ ...prev, config }));
+  const updateModel = useCallback((modelName: string) => {
+    setState(prev => ({ ...prev, config: { ...prev.config, model_name: modelName } }));
   }, []);
 
   const updateStep = useCallback((step: number) => {
@@ -97,9 +98,66 @@ export const useAppState = () => {
     });
   }, []);
 
+  const setCurrentJobId = useCallback((jobId: number | null) => {
+    setState(prev => {
+      const next = { ...prev, currentJobId: jobId };
+      draftStorage.saveDraft({ currentJobId: jobId });
+      return next;
+    });
+  }, []);
+
+  const setSourceFileName = useCallback((fileName: string | null) => {
+    setState(prev => {
+      const next = { ...prev, sourceFileName: fileName };
+      draftStorage.saveDraft({ sourceFileName: fileName });
+      return next;
+    });
+  }, []);
+
+  const resetJob = useCallback(() => {
+    setState({
+      ...initialState,
+      config: state.config,
+    });
+    draftStorage.clearAll();
+  }, [state.config]);
+
+  // 加载任务数据
+  const loadJob = useCallback(async (job: JobDetail) => {
+    const newState: AppState = {
+      currentStep: 0,
+      config: state.config,
+      currentJobId: job.id,
+      fileContent: job.file_content || '',
+      sourceFileName: job.source_file_name || null,
+      projectOverview: job.project_overview || '',
+      techRequirements: job.tech_requirements || '',
+      outlineData: job.outline_data || null,
+      selectedChapter: '',
+    };
+    setState(newState);
+    draftStorage.saveDraft(newState);
+
+    // 加载已保存的章节内容
+    if (job.id) {
+      try {
+        const response = await jobsApi.getContents(job.id);
+        const contents = response.data; // [{chapter_id, chapter_title, content}, ...]
+        // 将内容保存到 localStorage 供 ContentEdit 使用
+        contents.forEach((c: any) => {
+          if (c.chapter_id && c.content) {
+            draftStorage.upsertChapterContent(c.chapter_id, c.content);
+          }
+        });
+      } catch (e) {
+        console.warn('加载章节内容失败:', e);
+      }
+    }
+  }, [state.config]);
+
   return {
     state,
-    updateConfig,
+    updateModel,
     updateStep,
     updateFileContent,
     updateAnalysisResults,
@@ -107,5 +165,9 @@ export const useAppState = () => {
     updateSelectedChapter,
     nextStep,
     prevStep,
+    setCurrentJobId,
+    setSourceFileName,
+    resetJob,
+    loadJob,
   };
 };

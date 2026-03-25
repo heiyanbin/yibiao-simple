@@ -1,38 +1,47 @@
 /**
  * 文档分析页面
+ * 支持用户自定义提示词选择和任务跟踪
  */
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { documentApi, configApi } from '../services/api';
-import { CloudArrowUpIcon, DocumentIcon, PencilIcon, CheckIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { documentApi, configApi, jobsApi } from '../services/api';
+import { CloudArrowUpIcon, DocumentIcon, PencilIcon, CheckIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { draftStorage } from '../utils/draftStorage';
-
-// localStorage keys for custom prompts
-const STORAGE_KEYS = {
-  OVERVIEW_PROMPT: 'custom_overview_prompt',
-  REQUIREMENTS_PROMPT: 'custom_requirements_prompt',
-};
+import { usePrompts } from '../hooks/usePrompts';
+import PromptSelector from '../components/PromptSelector';
+import { PromptSelection } from '../types';
 
 interface DocumentAnalysisProps {
+  currentJobId: number | null;
   fileContent: string;
+  sourceFileName: string | null;
   projectOverview: string;
   techRequirements: string;
   onFileUpload: (content: string) => void;
+  onFileNameSet: (fileName: string | null) => void;
   onAnalysisComplete: (overview: string, requirements: string) => void;
+  onJobCreated: (jobId: number) => void;
+  onJobUpdated: () => void;
 }
 
 const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
+  currentJobId,
   fileContent,
+  sourceFileName,
   projectOverview,
   techRequirements,
   onFileUpload,
+  onFileNameSet,
   onAnalysisComplete,
+  onJobCreated,
+  onJobUpdated,
 }) => {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const promptInitializedRef = useRef(false);
 
   const [localOverview, setLocalOverview] = useState(projectOverview);
   const [localRequirements, setLocalRequirements] = useState(techRequirements);
@@ -44,21 +53,30 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
   // 高级设置展开状态
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // 默认提示词（从后端获取）
+  // 默认提示词（从后端配置获取）
   const [defaultPrompts, setDefaultPrompts] = useState<{ overview: string; requirements: string }>({
     overview: '',
     requirements: ''
   });
 
-  // 自定义提示词（从 localStorage 加载）
-  const [customOverviewPrompt, setCustomOverviewPrompt] = useState(() => {
-    return localStorage.getItem(STORAGE_KEYS.OVERVIEW_PROMPT) || '';
-  });
-  const [customRequirementsPrompt, setCustomRequirementsPrompt] = useState(() => {
-    return localStorage.getItem(STORAGE_KEYS.REQUIREMENTS_PROMPT) || '';
+  // 用户提示词管理
+  const { prompts, createPrompt, updatePrompt, getDefaultPrompt, loading: promptsLoading } = usePrompts();
+
+  // 选中的提示词
+  const [selectedPrompts, setSelectedPrompts] = useState<PromptSelection>({
+    overview_prompt_id: null,
+    requirements_prompt_id: null,
+    full_outline_prompt_id: null,
+    chapter_content_prompt_id: null,
   });
 
-  // 获取默认提示词
+  // 当前使用的提示词内容
+  const [currentPromptContent, setCurrentPromptContent] = useState<{ overview: string; requirements: string }>({
+    overview: '',
+    requirements: '',
+  });
+
+  // 获取系统内置提示词
   useEffect(() => {
     const fetchPrompts = async () => {
       try {
@@ -71,45 +89,36 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
           });
         }
       } catch (error) {
-        console.error('获取默认提示词失败:', error);
+        console.error('获取系统内置提示词失败:', error);
       }
     };
     fetchPrompts();
   }, []);
 
-  // 保存自定义提示词到 localStorage
-  const saveCustomPrompt = (type: 'overview' | 'requirements', value: string) => {
-    const key = type === 'overview' ? STORAGE_KEYS.OVERVIEW_PROMPT : STORAGE_KEYS.REQUIREMENTS_PROMPT;
-    if (value.trim()) {
-      localStorage.setItem(key, value);
-    } else {
-      localStorage.removeItem(key);
-    }
-    if (type === 'overview') {
-      setCustomOverviewPrompt(value);
-    } else {
-      setCustomRequirementsPrompt(value);
-    }
-  };
+  // 初始化时自动选中用户的默认提示词
+  useEffect(() => {
+    if (promptsLoading || promptInitializedRef.current) return;
 
-  // 恢复默认提示词
-  const resetToDefault = (type: 'overview' | 'requirements') => {
-    const key = type === 'overview' ? STORAGE_KEYS.OVERVIEW_PROMPT : STORAGE_KEYS.REQUIREMENTS_PROMPT;
-    localStorage.removeItem(key);
-    if (type === 'overview') {
-      setCustomOverviewPrompt('');
-    } else {
-      setCustomRequirementsPrompt('');
-    }
-  };
+    promptInitializedRef.current = true;
 
-  // 获取实际使用的提示词
-  const getEffectivePrompt = (type: 'overview' | 'requirements') => {
-    if (type === 'overview') {
-      return customOverviewPrompt || defaultPrompts.overview;
-    }
-    return customRequirementsPrompt || defaultPrompts.requirements;
-  };
+    // 检查是否有用户设置的默认提示词
+    const overviewDefault = getDefaultPrompt('overview');
+    const requirementsDefault = getDefaultPrompt('requirements');
+
+    setSelectedPrompts(prev => {
+      const updated = { ...prev };
+      if (overviewDefault) {
+        updated.overview_prompt_id = overviewDefault.id;
+        setCurrentPromptContent(c => ({ ...c, overview: overviewDefault.content }));
+      }
+      if (requirementsDefault) {
+        updated.requirements_prompt_id = requirementsDefault.id;
+        setCurrentPromptContent(c => ({ ...c, requirements: requirementsDefault.content }));
+      }
+      return updated;
+    });
+    // 如果没有默认提示词，保持 null（使用系统内置）
+  }, [prompts, promptsLoading, getDefaultPrompt]);
 
   // 同步外部传入的值到本地状态
   useEffect(() => {
@@ -119,6 +128,18 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
   useEffect(() => {
     setLocalRequirements(techRequirements);
   }, [techRequirements]);
+
+  // 处理提示词选择
+  const handlePromptSelect = (type: 'overview' | 'requirements', promptId: number | null, content: string) => {
+    setSelectedPrompts(prev => ({
+      ...prev,
+      [`${type}_prompt_id`]: promptId,
+    }));
+    setCurrentPromptContent(prev => ({
+      ...prev,
+      [type]: content,
+    }));
+  };
 
   // 开始编辑
   const startEdit = (field: 'overview' | 'requirements') => {
@@ -144,18 +165,52 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
     setEditingField(null);
     setEditValue('');
   };
-  
 
-  // 处理换行符的函数 - 只做基本转换
+  // 下载原始文件
+  const handleDownloadFile = async () => {
+    if (currentJobId) {
+      try {
+        const response = await documentApi.downloadSourceFile(currentJobId);
+        if (!response.ok) {
+          throw new Error('下载失败');
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = sourceFileName || 'source_file';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error('下载文件失败:', error);
+        alert('下载文件失败，请重试');
+      }
+    } else if (fileContent) {
+      // 没有关联任务时，下载提取的文本内容
+      const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const baseName = sourceFileName?.replace(/\.[^/.]+$/, '') || 'source';
+      a.download = `${baseName}_提取文本.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  // 处理换行符的函数
   const normalizeLineBreaks = (text: string) => {
     if (!text) return text;
-    
     return text
-      .replace(/\\n/g, '\n')  // 将字符串 \n 转换为实际换行符
-      .replace(/\r\n/g, '\n') // Windows换行符
-      .replace(/\r/g, '\n');  // Mac换行符
+      .replace(/\\n/g, '\n')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n');
   };
-  
+
   // 流式显示状态
   const [currentAnalysisStep, setCurrentAnalysisStep] = useState<'overview' | 'requirements' | null>(null);
   const [streamingOverview, setStreamingOverview] = useState('');
@@ -216,13 +271,20 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
       setUploading(true);
       setMessage(null);
 
-      const response = await documentApi.uploadFile(file);
-      
+      // 创建新任务
+      const jobName = file.name.replace(/\.[^/.]+$/, '');
+      const jobResponse = await jobsApi.create(jobName);
+      const newJobId = jobResponse.data.id;
+      onJobCreated(newJobId);
+
+      // 上传文件（关联任务）
+      const response = await documentApi.uploadFile(file, newJobId);
+
       if (response.data.success && response.data.file_content) {
-        // 上传新招标文件：清空上一轮 localStorage（按你的需求）
-        // 注意：这会同时清掉之前保存的草稿/正文内容缓存等
+        // 清空之前的草稿
         draftStorage.clearAll();
         onFileUpload(response.data.file_content);
+        onFileNameSet(file.name);
         setMessage({ type: 'success', text: response.data.message });
       } else {
         setMessage({ type: 'error', text: response.data.message });
@@ -284,13 +346,16 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
         }
       };
 
+      // 获取实际使用的提示词
+      const overviewPrompt = currentPromptContent.overview || defaultPrompts.overview;
+      const requirementsPrompt = currentPromptContent.requirements || defaultPrompts.requirements;
+
       // 第一步：分析项目概述
       setCurrentAnalysisStep('overview');
-      const overviewPrompt = getEffectivePrompt('overview');
       const overviewResponse = await documentApi.analyzeDocumentStream({
         file_content: fileContent,
         analysis_type: 'overview',
-        custom_prompt: customOverviewPrompt ? overviewPrompt : undefined,
+        custom_prompt: currentPromptContent.overview ? overviewPrompt : undefined,
       });
 
       await processStream(overviewResponse, (chunk) => {
@@ -304,11 +369,10 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
 
       // 第二步：分析技术评分要求
       setCurrentAnalysisStep('requirements');
-      const requirementsPrompt = getEffectivePrompt('requirements');
       const requirementsResponse = await documentApi.analyzeDocumentStream({
         file_content: fileContent,
         analysis_type: 'requirements',
-        custom_prompt: customRequirementsPrompt ? requirementsPrompt : undefined,
+        custom_prompt: currentPromptContent.requirements ? requirementsPrompt : undefined,
       });
 
       await processStream(requirementsResponse, (chunk) => {
@@ -322,8 +386,18 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
 
       // 完成后更新父组件状态
       onAnalysisComplete(overviewResult, requirementsResult);
+
+      // 更新任务
+      if (currentJobId) {
+        await jobsApi.update(currentJobId, {
+          project_overview: overviewResult,
+          tech_requirements: requirementsResult,
+        });
+        onJobUpdated();
+      }
+
       setMessage({ type: 'success', text: '标书解析完成' });
-      
+
       // 清空流式内容
       setStreamingOverview('');
       setStreamingRequirements('');
@@ -345,29 +419,72 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
       <div className="bg-white rounded-lg shadow p-4">
         <h2 className="text-lg font-semibold text-gray-900 mb-2">📄 文档上传（招标文件）</h2>
 
-        <div
-          className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors cursor-pointer"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <CloudArrowUpIcon className="mx-auto h-8 w-8 text-gray-400" />
-          <div className="mt-2">
-            <p className="text-sm text-gray-600">
-              {uploadedFile ? uploadedFile.name : '点击选择文件或拖拽文件到这里'}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              支持 PDF 和 Word 文档，最大 10MB
-            </p>
+        {/* 已上传文件显示 */}
+        {fileContent && (uploadedFile || sourceFileName) ? (
+          <div className="border border-green-200 rounded-lg p-4 bg-green-50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <DocumentIcon className="h-8 w-8 text-green-600 mr-3" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {uploadedFile ? uploadedFile.name : sourceFileName}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    已上传，可重新上传替换
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleDownloadFile}
+                  className="inline-flex items-center px-3 py-1.5 text-sm text-primary-600 hover:text-primary-800"
+                  title="下载原始文件"
+                >
+                  <ArrowDownTrayIcon className="w-4 h-4 mr-1" />
+                  下载
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="inline-flex items-center px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  重新上传
+                </button>
+              </div>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.docx,.doc"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
           </div>
-          
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.docx,.doc"
-            onChange={handleFileSelect}
-            className="hidden"
-          />
-        </div>
-        
+        ) : (
+          <div
+            className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors cursor-pointer"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <CloudArrowUpIcon className="mx-auto h-8 w-8 text-gray-400" />
+            <div className="mt-2">
+              <p className="text-sm text-gray-600">
+                点击选择文件或拖拽文件到这里
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                支持 PDF 和 Word 文档，最大 10MB
+              </p>
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.docx,.doc"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+          </div>
+        )}
+
         {uploading && (
           <div className="mt-4 text-center">
             <div className="inline-flex items-center px-4 py-2 text-sm text-blue-600">
@@ -387,7 +504,7 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
       {fileContent && (
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">🔍 文档分析</h2>
-          
+
           <div className="flex justify-center mb-6">
             <button
               onClick={handleAnalysis}
@@ -425,68 +542,48 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
               ) : (
                 <ChevronDownIcon className="w-5 h-5" />
               )}
-              <span className="ml-2">高级设置</span>
+              <span className="ml-2">提示词设置</span>
             </button>
           </div>
 
-          {/* 高级设置区域 */}
+          {/* 提示词设置区域 */}
           {showAdvanced && (
             <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
               <h4 className="text-sm font-medium text-gray-800 mb-4">提示词设置</h4>
               <p className="text-xs text-gray-500 mb-4">
-                自定义解析提示词。留空则使用默认提示词。修改后自动保存到浏览器本地。
+                选择已保存的提示词或使用默认提示词。可以保存新的自定义提示词供后续使用。
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 项目概述提示词 */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700">
-                      项目概述提示词
-                      {customOverviewPrompt && (
-                        <span className="ml-2 text-xs text-blue-600">(已自定义)</span>
-                      )}
-                    </label>
-                    <button
-                      onClick={() => resetToDefault('overview')}
-                      className="inline-flex items-center px-2 py-1 text-xs text-gray-600 hover:text-blue-600"
-                      title="恢复默认"
-                    >
-                      <ArrowPathIcon className="w-3 h-3 mr-1" />
-                      恢复默认
-                    </button>
-                  </div>
-                  <textarea
-                    value={customOverviewPrompt || defaultPrompts.overview || '加载中...'}
-                    onChange={(e) => saveCustomPrompt('overview', e.target.value)}
-                    className="w-full h-32 p-3 border border-gray-300 rounded-lg text-xs focus:ring-blue-500 focus:border-blue-500 resize-none"
-                  />
-                </div>
+                {/* 项目概述提示词选择器 */}
+                <PromptSelector
+                  promptType="overview"
+                  label="项目概述提示词"
+                  selectedPromptId={selectedPrompts.overview_prompt_id}
+                  defaultPrompt={defaultPrompts.overview}
+                  prompts={prompts}
+                  onPromptSelect={(id, content) => handlePromptSelect('overview', id, content)}
+                  onCreatePrompt={async (name, content, isDefault) => {
+                    return await createPrompt(name, 'overview', content, isDefault);
+                  }}
+                  onUpdatePrompt={updatePrompt}
+                  loading={promptsLoading}
+                />
 
-                {/* 技术评分要求提示词 */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700">
-                      技术评分要求提示词
-                      {customRequirementsPrompt && (
-                        <span className="ml-2 text-xs text-blue-600">(已自定义)</span>
-                      )}
-                    </label>
-                    <button
-                      onClick={() => resetToDefault('requirements')}
-                      className="inline-flex items-center px-2 py-1 text-xs text-gray-600 hover:text-blue-600"
-                      title="恢复默认"
-                    >
-                      <ArrowPathIcon className="w-3 h-3 mr-1" />
-                      恢复默认
-                    </button>
-                  </div>
-                  <textarea
-                    value={customRequirementsPrompt || defaultPrompts.requirements || '加载中...'}
-                    onChange={(e) => saveCustomPrompt('requirements', e.target.value)}
-                    className="w-full h-32 p-3 border border-gray-300 rounded-lg text-xs focus:ring-blue-500 focus:border-blue-500 resize-none"
-                  />
-                </div>
+                {/* 技术评分要求提示词选择器 */}
+                <PromptSelector
+                  promptType="requirements"
+                  label="技术评分要求提示词"
+                  selectedPromptId={selectedPrompts.requirements_prompt_id}
+                  defaultPrompt={defaultPrompts.requirements}
+                  prompts={prompts}
+                  onPromptSelect={(id, content) => handlePromptSelect('requirements', id, content)}
+                  onCreatePrompt={async (name, content, isDefault) => {
+                    return await createPrompt(name, 'requirements', content, isDefault);
+                  }}
+                  onUpdatePrompt={updatePrompt}
+                  loading={promptsLoading}
+                />
               </div>
             </div>
           )}
@@ -619,8 +716,8 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
       {/* 消息提示 */}
       {message && (
         <div className={`p-4 rounded-md ${
-          message.type === 'success' 
-            ? 'bg-green-100 text-green-700 border border-green-200' 
+          message.type === 'success'
+            ? 'bg-green-100 text-green-700 border border-green-200'
             : 'bg-red-100 text-red-700 border border-red-200'
         }`}>
           {message.text}

@@ -7,7 +7,7 @@ import logging
 
 from ..utils.outline_util import get_random_indexes, calculate_nodes_distribution, generate_one_outline_json_by_level1
 from ..utils.json_util import check_json
-from ..utils.config_manager import config_manager
+from ..utils.system_config import system_config
 from ..utils.prompt_manager import get_outline_level1_prompt, get_outline_level2_3_prompt, get_chapter_content_prompt
 
 logger = logging.getLogger(__name__)
@@ -15,14 +15,16 @@ logger = logging.getLogger(__name__)
 
 class OpenAIService:
     """OpenAI服务类"""
-    
-    def __init__(self):
-        """初始化OpenAI服务，从config_manager读取配置"""
-        # 从配置管理器加载配置
-        config = config_manager.load_config()
-        self.api_key = config.get('api_key', '')
-        self.base_url = config.get('base_url', '')
-        self.model_name = config.get('model_name', 'gpt-3.5-turbo')
+
+    def __init__(self, model_name: str = None):
+        """初始化OpenAI服务，从系统配置读取 API Key"""
+        # 从系统配置加载
+        self.api_key = system_config.get_api_key()
+        self.base_url = system_config.get_base_url()
+        self.model_name = model_name or system_config.get_models()[0] if system_config.get_models() else 'gpt-3.5-turbo'
+
+        if not self.api_key:
+            raise ValueError("系统未配置 API Key，请联系管理员配置")
 
         # 初始化OpenAI客户端 - 使用异步客户端
         self.client = openai.AsyncOpenAI(

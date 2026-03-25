@@ -1,17 +1,16 @@
 /**
  * 目录编辑页面
+ * 支持用户自定义提示词选择和任务跟踪
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { OutlineData, OutlineItem } from '../types';
-import { outlineApi, expandApi, configApi } from '../services/api';
-import { ChevronRightIcon, ChevronDownIcon, DocumentTextIcon, PencilIcon, TrashIcon, PlusIcon, ChevronUpIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
-
-// localStorage keys for custom prompts
-const STORAGE_KEYS = {
-  FULL_OUTLINE_PROMPT: 'custom_full_outline_prompt',
-};
+import { outlineApi, expandApi, configApi, jobsApi } from '../services/api';
+import { ChevronRightIcon, ChevronDownIcon, DocumentTextIcon, PencilIcon, TrashIcon, PlusIcon, ChevronUpIcon, ArrowDownIcon } from '@heroicons/react/24/outline';
+import { usePrompts } from '../hooks/usePrompts';
+import PromptSelector from '../components/PromptSelector';
 
 interface OutlineEditProps {
+  currentJobId: number | null;
   projectOverview: string;
   techRequirements: string;
   outlineData: OutlineData | null;
@@ -19,6 +18,7 @@ interface OutlineEditProps {
 }
 
 const OutlineEdit: React.FC<OutlineEditProps> = ({
+  currentJobId,
   projectOverview,
   techRequirements,
   outlineData,
@@ -39,17 +39,22 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
   // 高级设置展开状态
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // 默认提示词（从后端获取）
+  // 默认提示词（从后端获取 - 系统内置）
   const [defaultPrompts, setDefaultPrompts] = useState<{ full_outline: string }>({
     full_outline: ''
   });
 
-  // 自定义提示词（从 localStorage 加载）
-  const [customFullOutlinePrompt, setCustomFullOutlinePrompt] = useState(() => {
-    return localStorage.getItem(STORAGE_KEYS.FULL_OUTLINE_PROMPT) || '';
-  });
+  // 用户提示词管理
+  const { prompts, createPrompt, updatePrompt, getDefaultPrompt, loading: promptsLoading } = usePrompts();
 
-  // 获取默认提示词
+  // 选中的提示词
+  const [selectedPromptId, setSelectedPromptId] = useState<number | null>(null);
+  const [currentPromptContent, setCurrentPromptContent] = useState('');
+
+  // 跟踪是否已初始化提示词选择
+  const promptInitializedRef = useRef(false);
+
+  // 获取系统内置提示词
   useEffect(() => {
     const fetchPrompts = async () => {
       try {
@@ -61,26 +66,29 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
           });
         }
       } catch (error) {
-        console.error('获取默认提示词失败:', error);
+        console.error('获取系统内置提示词失败:', error);
       }
     };
     fetchPrompts();
   }, []);
 
-  // 保存自定义提示词到 localStorage
-  const saveCustomPrompt = (value: string) => {
-    if (value.trim()) {
-      localStorage.setItem(STORAGE_KEYS.FULL_OUTLINE_PROMPT, value);
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.FULL_OUTLINE_PROMPT);
-    }
-    setCustomFullOutlinePrompt(value);
-  };
+  // 初始化时自动选中用户的默认提示词
+  useEffect(() => {
+    if (promptsLoading || promptInitializedRef.current) return;
 
-  // 恢复默认提示词
-  const resetToDefault = () => {
-    localStorage.removeItem(STORAGE_KEYS.FULL_OUTLINE_PROMPT);
-    setCustomFullOutlinePrompt('');
+    promptInitializedRef.current = true;
+    const defaultPrompt = getDefaultPrompt('full_outline');
+    if (defaultPrompt) {
+      setSelectedPromptId(defaultPrompt.id);
+      setCurrentPromptContent(defaultPrompt.content);
+    }
+    // 如果没有默认提示词，保持 null（使用系统内置）
+  }, [prompts, promptsLoading, getDefaultPrompt]);
+
+  // 处理提示词选择
+  const handlePromptSelect = (promptId: number | null, content: string) => {
+    setSelectedPromptId(promptId);
+    setCurrentPromptContent(content);
   };
 
   // 处理方案扩写文件上传
@@ -126,7 +134,7 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
         uploaded_expand: uploadedExpand,
         old_outline: oldOutline || undefined,
         old_document: oldDocument || undefined,
-        custom_prompt: customFullOutlinePrompt || undefined,
+        custom_prompt: currentPromptContent || undefined,
       });
 
       const reader = response.body?.getReader();
@@ -154,7 +162,6 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
               const parsed = JSON.parse(data);
               if (parsed.chunk) {
                 result += parsed.chunk;
-                // 实时显示生成的内容
                 setStreamingContent(result);
               }
             } catch (e) {
@@ -169,7 +176,14 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
         const outlineJson = JSON.parse(result);
         onOutlineGenerated(outlineJson);
         setMessage({ type: 'success', text: '目录结构生成完成' });
-        setStreamingContent(''); // 清空流式内容
+        setStreamingContent('');
+
+        // 更新任务
+        if (currentJobId) {
+          await jobsApi.update(currentJobId, {
+            outline_data: outlineJson,
+          });
+        }
 
         // 默认展开所有项目
         const allIds = new Set<string>();
@@ -186,15 +200,14 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
       } catch (parseError: any) {
         console.error('JSON解析错误:', parseError);
         console.error('原始内容:', result);
-        // 显示更详细的错误信息和原始内容
         const errorMsg = `解析目录结构失败: ${parseError.message}\n\n原始响应前200字符: ${result.substring(0, 200)}`;
         setMessage({ type: 'error', text: errorMsg });
-        setStreamingContent(result); // 保留原始内容便于调试
+        setStreamingContent(result);
         return;
       }
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message || '目录生成失败' });
-      setStreamingContent(''); // 出错时也清空
+      setStreamingContent('');
     } finally {
       setGenerating(false);
     }
@@ -225,8 +238,19 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
     setEditDescription('');
   };
 
+  // 保存目录到后端
+  const saveOutlineToBackend = async (data: OutlineData) => {
+    if (currentJobId) {
+      try {
+        await jobsApi.update(currentJobId, { outline_data: data });
+      } catch (e) {
+        console.warn('保存目录到服务器失败:', e);
+      }
+    }
+  };
+
   // 保存编辑
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!outlineData || !editingItem) return;
 
     const updateItem = (items: OutlineItem[]): OutlineItem[] => {
@@ -254,6 +278,7 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
     };
 
     onOutlineGenerated(updatedData);
+    await saveOutlineToBackend(updatedData);
     cancelEditing();
     setMessage({ type: 'success', text: '目录项更新成功' });
   };
@@ -271,7 +296,7 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
   };
 
   // 删除目录项
-  const deleteItem = (itemId: string) => {
+  const deleteItem = async (itemId: string) => {
     if (!outlineData) return;
 
     if (window.confirm('确定要删除这个目录项吗？')) {
@@ -287,7 +312,6 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
         });
       };
 
-      // 删除项目后重新排序
       const filteredItems = deleteFromItems(outlineData.outline);
       const reorderedItems = reorderItems(filteredItems);
 
@@ -297,22 +321,21 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
       };
 
       onOutlineGenerated(updatedData);
+      await saveOutlineToBackend(updatedData);
       setMessage({ type: 'success', text: '目录项删除成功' });
     }
   };
 
   // 添加子目录项
-  const addChildItem = (parentId: string) => {
+  const addChildItem = async (parentId: string) => {
     if (!outlineData) return;
 
-    // 查找父项并计算下一个编号
     const findParentAndGetNextId = (items: OutlineItem[], targetParentId: string): string | null => {
       for (const item of items) {
         if (item.id === targetParentId) {
-          // 找到父项，计算下一个子项编号
           const existingChildren = item.children || [];
           let maxChildNum = 0;
-          
+
           existingChildren.forEach(child => {
             const childIdParts = child.id.split('.');
             const lastPart = childIdParts[childIdParts.length - 1];
@@ -321,10 +344,10 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
               maxChildNum = Math.max(maxChildNum, num);
             }
           });
-          
+
           return `${parentId}.${maxChildNum + 1}`;
         }
-        
+
         if (item.children) {
           const result = findParentAndGetNextId(item.children, targetParentId);
           if (result) return result;
@@ -364,27 +387,25 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
     };
 
     onOutlineGenerated(updatedData);
-    
-    // 展开父项
+    await saveOutlineToBackend(updatedData);
+
     setExpandedItems(prev => {
       const newSet = new Set(prev);
       newSet.add(parentId);
       return newSet;
     });
-    
-    // 自动开始编辑新项
+
     setTimeout(() => {
       startEditing(newItem);
     }, 100);
-    
+
     setMessage({ type: 'success', text: '子目录添加成功' });
   };
 
   // 添加根目录项
-  const addRootItem = () => {
+  const addRootItem = async () => {
     if (!outlineData) return;
 
-    // 计算下一个根目录编号
     let maxRootNum = 0;
     outlineData.outline.forEach(item => {
       const idParts = item.id.split('.');
@@ -408,13 +429,62 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
     };
 
     onOutlineGenerated(updatedData);
-    
-    // 自动开始编辑新项
+    await saveOutlineToBackend(updatedData);
+
     setTimeout(() => {
       startEditing(newItem);
     }, 100);
-    
+
     setMessage({ type: 'success', text: '目录项添加成功' });
+  };
+
+  // 在指定项后插入同级目录项
+  const insertAfterItem = async (afterId: string) => {
+    if (!outlineData) return;
+
+    // 解析 afterId，找到父级前缀
+    const idParts = afterId.split('.');
+    const parentPrefix = idParts.slice(0, -1).join('.');
+
+    const insertIntoItems = (items: OutlineItem[], targetId: string): OutlineItem[] | null => {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].id === targetId) {
+          // 找到目标项，在其后插入新项
+          const newItem: OutlineItem = {
+            id: 'temp', // 临时ID，后面会重新编号
+            title: '新目录项',
+            description: '请编辑描述'
+          };
+          const newItems = [...items.slice(0, i + 1), newItem, ...items.slice(i + 1)];
+          // 重新编号
+          return reorderItems(newItems, parentPrefix);
+        }
+        if (items[i].children) {
+          const result = insertIntoItems(items[i].children!, targetId);
+          if (result) {
+            return [...items.slice(0, i), { ...items[i], children: result }, ...items.slice(i + 1)];
+          }
+        }
+      }
+      return null;
+    };
+
+    const updatedOutline = insertIntoItems(outlineData.outline, afterId);
+    if (!updatedOutline) return;
+
+    const updatedData = { ...outlineData, outline: updatedOutline };
+    onOutlineGenerated(updatedData);
+    await saveOutlineToBackend(updatedData);
+
+    // 找到新插入项的ID（在afterId之后的位置）
+    const afterNum = parseInt(idParts[idParts.length - 1]);
+    const newItemId = parentPrefix ? `${parentPrefix}.${afterNum + 1}` : `${afterNum + 1}`;
+
+    setTimeout(() => {
+      startEditing({ id: newItemId, title: '新目录项', description: '请编辑描述' });
+    }, 100);
+
+    setMessage({ type: 'success', text: '目录项插入成功' });
   };
 
   const renderOutlineItem = (item: OutlineItem, level: number = 0) => {
@@ -440,10 +510,9 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
           ) : (
             <DocumentTextIcon className="mt-1 h-4 w-4 text-gray-400" />
           )}
-          
+
           <div className="flex-1 min-w-0">
             {isEditing ? (
-              // 编辑模式
               <div className="space-y-2">
                 <input
                   type="text"
@@ -475,7 +544,6 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
                 </div>
               </div>
             ) : (
-              // 正常显示模式
               <>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
@@ -492,8 +560,7 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
                       </span>
                     )}
                   </div>
-                  
-                  {/* 操作按钮组 */}
+
                   <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => startEditing(item)}
@@ -510,6 +577,13 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
                       <PlusIcon className="h-3 w-3" />
                     </button>
                     <button
+                      onClick={() => insertAfterItem(item.id)}
+                      className="p-1 rounded hover:bg-purple-100 text-purple-600"
+                      title="在此项后插入"
+                    >
+                      <ArrowDownIcon className="h-3 w-3" />
+                    </button>
+                    <button
                       onClick={() => deleteItem(item.id)}
                       className="p-1 rounded hover:bg-red-100 text-red-600"
                       title="删除"
@@ -519,8 +593,7 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
                   </div>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">{item.description}</p>
-                
-                {/* 显示生成的内容（如果有） */}
+
                 {item.content && isLeaf && (
                   <div className="mt-2 p-3 bg-gray-50 rounded-md border-l-4 border-blue-200">
                     <div className="text-xs text-gray-600 whitespace-pre-wrap">{item.content}</div>
@@ -530,7 +603,7 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
             )}
           </div>
         </div>
-        
+
         {hasChildren && isExpanded && (
           <div>
             {item.children!.map(child => renderOutlineItem(child, level + 1))}
@@ -545,7 +618,7 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
       {/* 操作按钮 */}
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-xl font-semibold text-gray-900 mb-4">📋 目录管理</h2>
-        
+
         <div className="flex space-x-4">
           {/* 方案扩写按钮 */}
           <div className="relative">
@@ -612,43 +685,32 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
             ) : (
               <ChevronDownIcon className="w-4 h-4" />
             )}
-            <span className="ml-2">高级设置</span>
+            <span className="ml-2">提示词设置</span>
           </button>
 
         </div>
 
-        {/* 高级设置区域 */}
+        {/* 提示词设置区域 */}
         {showAdvanced && (
           <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
             <h4 className="text-sm font-medium text-gray-800 mb-4">提示词设置</h4>
             <p className="text-xs text-gray-500 mb-4">
-              自定义目录生成提示词。留空则使用默认提示词。修改后自动保存到浏览器本地。
+              选择已保存的提示词或使用默认提示词。可以保存新的自定义提示词供后续使用。
             </p>
 
-            {/* 目录生成提示词 */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  目录生成提示词
-                  {customFullOutlinePrompt && (
-                    <span className="ml-2 text-xs text-blue-600">(已自定义)</span>
-                  )}
-                </label>
-                <button
-                  onClick={resetToDefault}
-                  className="inline-flex items-center px-2 py-1 text-xs text-gray-600 hover:text-blue-600"
-                  title="恢复默认"
-                >
-                  <ArrowPathIcon className="w-3 h-3 mr-1" />
-                  恢复默认
-                </button>
-              </div>
-              <textarea
-                value={customFullOutlinePrompt || defaultPrompts.full_outline || '加载中...'}
-                onChange={(e) => saveCustomPrompt(e.target.value)}
-                className="w-full h-40 p-3 border border-gray-300 rounded-lg text-xs focus:ring-blue-500 focus:border-blue-500 resize-none"
-              />
-            </div>
+            <PromptSelector
+              promptType="full_outline"
+              label="目录生成提示词"
+              selectedPromptId={selectedPromptId}
+              defaultPrompt={defaultPrompts.full_outline}
+              prompts={prompts}
+              onPromptSelect={handlePromptSelect}
+              onCreatePrompt={async (name, content, isDefault) => {
+                return await createPrompt(name, 'full_outline', content, isDefault);
+              }}
+              onUpdatePrompt={updatePrompt}
+              loading={promptsLoading}
+            />
           </div>
         )}
 
@@ -707,8 +769,8 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
       {/* 消息提示 */}
       {message && (
         <div className={`p-4 rounded-md ${
-          message.type === 'success' 
-            ? 'bg-green-100 text-green-700 border border-green-200' 
+          message.type === 'success'
+            ? 'bg-green-100 text-green-700 border border-green-200'
             : 'bg-red-100 text-red-700 border border-red-200'
         }`}>
           {message.text}

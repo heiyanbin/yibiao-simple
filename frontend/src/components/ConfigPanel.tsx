@@ -2,84 +2,47 @@
  * 配置面板组件
  */
 import React, { useState, useEffect } from 'react';
-import { ConfigData } from '../types';
-import { configApi } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
+import AuthModal from './AuthModal';
 
 interface ConfigPanelProps {
-  config: ConfigData;
-  onConfigChange: (config: ConfigData) => void;
+  selectedModel: string;
+  onModelChange: (model: string) => void;
+  onShowJobList?: () => void;
+  onShowPromptManage?: () => void;
+  onShowAdmin?: () => void;
 }
 
-const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onConfigChange }) => {
-  const [localConfig, setLocalConfig] = useState<ConfigData>(config);
+const ConfigPanel: React.FC<ConfigPanelProps> = ({ selectedModel, onModelChange, onShowJobList, onShowPromptManage, onShowAdmin }) => {
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [models, setModels] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // 获取可用模型列表
   useEffect(() => {
-    loadConfig();
-  }, []);
-
-  const loadConfig = async () => {
-    try {
-      const response = await configApi.loadConfig();
-      if (response.data) {
-        setLocalConfig(response.data);
-        onConfigChange(response.data);
-      }
-    } catch (error) {
-      console.error('加载配置失败:', error);
-    }
-  };
-
-  const handleSave = async () => {
-    try {
-      setLoading(true);
-      console.log('保存配置:', localConfig);
-      const response = await configApi.saveConfig(localConfig);
-      console.log('保存响应:', response.data);
-      
-      if (response.data.success) {
-        onConfigChange(localConfig);
-        setMessage({ type: 'success', text: '配置保存成功！' });
-        setTimeout(() => setMessage(null), 3000);
-      } else {
-        setMessage({ type: 'error', text: response.data.message || '配置保存失败' });
-      }
-    } catch (error) {
-      console.error('保存配置错误:', error);
-      setMessage({ type: 'error', text: '配置保存失败' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGetModels = async () => {
-    if (!localConfig.api_key) {
-      setMessage({ type: 'error', text: '请先输入API Key' });
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const response = await configApi.getModels(localConfig);
-      
-      if (response.data.success) {
-        setModels(response.data.models);
-        // 如果当前选中的模型不在新的模型列表中，则选择第一个可用模型
-        if (response.data.models.length > 0 && !response.data.models.includes(localConfig.model_name)) {
-          setLocalConfig({ ...localConfig, model_name: response.data.models[0] });
+    const fetchModels = async () => {
+      try {
+        const response = await fetch('/api/config/models');
+        const data = await response.json();
+        if (data.success && data.models.length > 0) {
+          setModels(data.models);
+          if (!selectedModel) {
+            onModelChange(data.models[0]);
+          }
         }
-        setMessage({ type: 'success', text: `获取到 ${response.data.models.length} 个模型` });
-        setTimeout(() => setMessage(null), 3000);
-      } else {
-        setMessage({ type: 'error', text: response.data.message });
+      } catch (error) {
+        console.error('获取模型列表失败:', error);
       }
-    } catch (error) {
-      setMessage({ type: 'error', text: '获取模型列表失败' });
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    fetchModels();
+  }, [selectedModel, onModelChange]);
+
+  const handleLogout = async () => {
+    await logout();
+    setMessage({ type: 'success', text: '已成功登出' });
+    setTimeout(() => setMessage(null), 3000);
   };
 
   return (
@@ -94,66 +57,73 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onConfigChange }) => 
           <hr className="mt-4 border-gray-200" />
         </div>
 
-        {/* 基本配置 */}
-        <div>
-          <h2 className="text-lg font-medium text-gray-900 mb-4">⚙️ 基本配置</h2>
-          
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="api_key" className="block text-sm font-medium text-gray-700">
-                OpenAI API Key
-              </label>
-              <input
-                type="password"
-                id="api_key"
-                value={localConfig.api_key}
-                onChange={(e) => setLocalConfig({ ...localConfig, api_key: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                placeholder="输入你的OpenAI API密钥"
-              />
+        {/* 用户信息 */}
+        <div className="bg-white rounded-lg p-4 shadow-sm">
+          {isLoading ? (
+            <div className="text-gray-500">加载中...</div>
+          ) : isAuthenticated && user ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-gray-900">{user.username}</div>
+                  <div className="text-sm text-gray-500">{user.email}</div>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm text-red-600 hover:text-red-800"
+                >
+                  登出
+                </button>
+              </div>
+              {onShowJobList && (
+                <button
+                  onClick={onShowJobList}
+                  className="w-full py-2 px-4 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm font-medium"
+                >
+                  📋 我的任务
+                </button>
+              )}
+              {onShowPromptManage && (
+                <button
+                  onClick={onShowPromptManage}
+                  className="w-full py-2 px-4 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm font-medium"
+                >
+                  ✏️ 提示词管理
+                </button>
+              )}
+              {onShowAdmin && user.is_admin && (
+                <button
+                  onClick={onShowAdmin}
+                  className="w-full py-2 px-4 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm font-medium"
+                >
+                  ⚙️ 系统管理
+                </button>
+              )}
             </div>
-
-            <div>
-              <label htmlFor="base_url" className="block text-sm font-medium text-gray-700">
-                Base URL (可选)
-              </label>
-              <input
-                type="text"
-                id="base_url"
-                value={localConfig.base_url || ''}
-                onChange={(e) => setLocalConfig({ ...localConfig, base_url: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                placeholder="如果使用代理或其他服务，请输入base URL"
-              />
-            </div>
-          </div>
+          ) : (
+            <button
+              onClick={() => setShowAuthModal(true)}
+              className="w-full py-2 px-4 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+            >
+              登录 / 注册
+            </button>
+          )}
         </div>
 
-        {/* 模型配置 */}
+        {/* 模型选择 */}
         <div>
-          <h3 className="text-base font-medium text-gray-900 mb-3">🤖 模型配置</h3>
-          
-          <button
-            onClick={handleGetModels}
-            disabled={loading}
-            className="w-full mb-3 inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:bg-gray-400"
-          >
-            {loading ? '获取中...' : '🔄 获取可用模型'}
-          </button>
+          <h3 className="text-base font-medium text-gray-900 mb-3">🤖 模型选择</h3>
 
-          <div>
-            <label htmlFor="model_name" className="block text-sm font-medium text-gray-700">
-              模型名称
-            </label>
-            {models.length > 0 ? (
+          {models.length > 0 ? (
+            <div>
+              <label htmlFor="model_name" className="block text-sm font-medium text-gray-700 mb-1">
+                选择模型
+              </label>
               <select
                 id="model_name"
-                value={localConfig.model_name}
-                onChange={(e) => {
-                  console.log('模型选择变更:', e.target.value);
-                  setLocalConfig({ ...localConfig, model_name: e.target.value });
-                }}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                value={selectedModel}
+                onChange={(e) => onModelChange(e.target.value)}
+                className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm py-2 px-3"
               >
                 {models.map((model) => (
                   <option key={model} value={model}>
@@ -161,33 +131,19 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onConfigChange }) => 
                   </option>
                 ))}
               </select>
-            ) : (
-              <input
-                type="text"
-                id="model_name"
-                value={localConfig.model_name}
-                onChange={(e) => setLocalConfig({ ...localConfig, model_name: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                placeholder="输入要使用的模型名称"
-              />
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500">
+              系统未配置可用模型，请联系管理员
+            </div>
+          )}
         </div>
-
-        {/* 保存按钮 */}
-        <button
-          onClick={handleSave}
-          disabled={loading}
-          className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-gray-400"
-        >
-          {loading ? '保存中...' : '💾 保存配置'}
-        </button>
 
         {/* 消息提示 */}
         {message && (
           <div className={`p-3 rounded-md text-sm ${
-            message.type === 'success' 
-              ? 'bg-green-100 text-green-700 border border-green-200' 
+            message.type === 'success'
+              ? 'bg-green-100 text-green-700 border border-green-200'
               : 'bg-red-100 text-red-700 border border-red-200'
           }`}>
             {message.text}
@@ -198,13 +154,18 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onConfigChange }) => 
         <div className="border-t border-gray-200 pt-4">
           <h3 className="text-sm font-medium text-gray-900 mb-2">📋 使用说明</h3>
           <div className="text-sm text-gray-600 space-y-1">
-            <p>1. 配置API密钥和Base URL</p>
-            <p>2. 选择或输入模型名称</p>
+            <p>1. 登录您的账号</p>
+            <p>2. 选择使用的模型</p>
             <p>3. 按步骤完成标书编写流程</p>
           </div>
         </div>
 
-        </div>
+      </div>
+
+      {/* 认证弹窗 */}
+      {showAuthModal && (
+        <AuthModal onClose={() => setShowAuthModal(false)} />
+      )}
     </div>
   );
 };

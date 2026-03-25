@@ -91,10 +91,9 @@ def main():
     """主函数"""
     global uvicorn_server, server_thread, server_should_stop
 
-    print("="*50)
-    print("AI写标书助手 - 启动中...")
-    print("="*50)
-    logger.info("AI写标书助手启动中...")
+    logger.info("="*50)
+    logger.info("AI写标书助手 - 启动中...")
+    logger.info("="*50)
 
     # 注册信号处理器
     if hasattr(signal, 'SIGTERM'):
@@ -132,8 +131,7 @@ def main():
             except Exception as e:
                 if not server_should_stop:
                     logger.error(f"服务启动失败: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    logger.exception("详细错误信息:")
 
         # 创建非守护线程，但添加退出处理
         server_thread = threading.Thread(target=start_server, daemon=False)
@@ -154,16 +152,11 @@ def main():
         browser_thread = threading.Thread(target=open_browser, daemon=True)
         browser_thread.start()
 
-        print("\n" + "="*50)
-        print("服务启动完成！")
-        print("访问地址: http://localhost:8000")
-        print("API文档: http://localhost:8000/docs")
-        print("健康检查: http://localhost:8000/health")
-        print("="*50)
-        print("\n完整功能已集成，关闭此窗口会自动停止服务")
-        print("按 Ctrl+C 可以安全退出")
-        print("="*50)
         logger.info("服务启动完成，访问地址: http://localhost:8000")
+        logger.info("API文档: http://localhost:8000/docs")
+        logger.info("健康检查: http://localhost:8000/health")
+        logger.info("完整功能已集成，关闭此窗口会自动停止服务")
+        logger.info("按 Ctrl+C 可以安全退出")
 
         # 等待服务器线程，或者直到收到退出信号
         try:
@@ -176,8 +169,7 @@ def main():
         logger.info("服务已关闭")
     except Exception as e:
         logger.error(f"运行时错误: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception("详细错误信息:")
     finally:
         cleanup_server()
         logger.info("程序已退出")

@@ -13,7 +13,7 @@ const CONTENT_BY_ID_KEY = 'yibiao:contentById:v1';
 
 export type DraftState = Pick<
   AppState,
-  'currentStep' | 'fileContent' | 'projectOverview' | 'techRequirements' | 'outlineData' | 'selectedChapter'
+  'currentStep' | 'currentJobId' | 'fileContent' | 'sourceFileName' | 'projectOverview' | 'techRequirements' | 'outlineData' | 'selectedChapter'
 >;
 
 export type ContentById = Record<string, string>; // 章节id -> content
@@ -43,11 +43,13 @@ export const draftStorage = {
   },
 
   clearAll() {
-    // 按用户要求：上传新招标文件时清空之前的 localStorage
+    // 按用户要求：上传新招标文件时清空之前的草稿数据
+    // 注意：只清除草稿相关的 key，不清除 access_token 等认证信息
     try {
-      localStorage.clear();
+      localStorage.removeItem(DRAFT_KEY);
+      localStorage.removeItem(CONTENT_BY_ID_KEY);
     } catch (e) {
-      console.warn('清空 localStorage 失败:', e);
+      console.warn('清空草稿数据失败:', e);
     }
   },
 
