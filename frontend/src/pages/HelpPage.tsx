@@ -65,26 +65,18 @@ const HelpPage: React.FC<HelpPageProps> = ({ onBack }) => {
   return (
     <div className="max-w-4xl mx-auto">
       {/* 顶部工具栏 */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6">
         <button
           onClick={onBack}
           className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
         >
           ← 返回
         </button>
-
-        <a
-          href="/api/config/help-pdf"
-          download="AI标书助手-使用指南.pdf"
-          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-        >
-          📥 下载 PDF
-        </a>
       </div>
 
       {/* 文档内容 */}
       <div
-        className="bg-white rounded-lg shadow-sm p-8 prose prose-lg max-w-none"
+        className="bg-white rounded-lg shadow-sm p-8 prose max-w-none"
         dangerouslySetInnerHTML={{ __html: htmlContent }}
       />
     </div>
