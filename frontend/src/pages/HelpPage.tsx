@@ -76,7 +76,7 @@ const HelpPage: React.FC<HelpPageProps> = ({ onBack }) => {
 
       {/* 文档内容 */}
       <div
-        className="bg-white rounded-lg shadow-sm p-8 prose max-w-none"
+        className="bg-white rounded-lg shadow-sm p-8 prose prose-sm max-w-none"
         dangerouslySetInnerHTML={{ __html: htmlContent }}
       />
     </div>
