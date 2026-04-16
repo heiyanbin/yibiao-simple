@@ -11,9 +11,10 @@ interface ConfigPanelProps {
   onShowJobList?: () => void;
   onShowPromptManage?: () => void;
   onShowAdmin?: () => void;
+  onShowHelp?: () => void;
 }
 
-const ConfigPanel: React.FC<ConfigPanelProps> = ({ selectedModel, onModelChange, onShowJobList, onShowPromptManage, onShowAdmin }) => {
+const ConfigPanel: React.FC<ConfigPanelProps> = ({ selectedModel, onModelChange, onShowJobList, onShowPromptManage, onShowAdmin, onShowHelp }) => {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [models, setModels] = useState<string[]>([]);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -158,6 +159,16 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ selectedModel, onModelChange,
             <p>2. 选择使用的模型</p>
             <p>3. 按步骤完成标书编写流程</p>
           </div>
+
+          {/* 帮助文档链接 */}
+          {onShowHelp && (
+            <button
+              onClick={onShowHelp}
+              className="mt-4 w-full py-2 px-4 bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 text-sm font-medium flex items-center justify-center gap-2"
+            >
+              📖 帮助文档
+            </button>
+          )}
         </div>
 
       </div>

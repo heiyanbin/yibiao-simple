@@ -13,10 +13,11 @@ import ContentEdit from './pages/ContentEdit';
 import JobList from './pages/JobList';
 import PromptManage from './pages/PromptManage';
 import AdminPage from './pages/AdminPage';
+import HelpPage from './pages/HelpPage';
 import { JobDetail } from './types';
 
 // 页面模式
-type PageMode = 'job-list' | 'editor' | 'prompt-manage' | 'admin';
+type PageMode = 'job-list' | 'editor' | 'prompt-manage' | 'admin' | 'help';
 
 function AppContent() {
   const {
@@ -150,6 +151,7 @@ function AppContent() {
         onShowJobList={() => setPageMode('job-list')}
         onShowPromptManage={() => setPageMode('prompt-manage')}
         onShowAdmin={() => setPageMode('admin')}
+        onShowHelp={() => setPageMode('help')}
       />
 
       {/* 主内容区域 */}
@@ -169,6 +171,8 @@ function AppContent() {
             <PromptManage onBack={() => setPageMode('job-list')} />
           ) : pageMode === 'admin' ? (
             <AdminPage onBack={() => setPageMode('job-list')} />
+          ) : pageMode === 'help' ? (
+            <HelpPage onBack={() => setPageMode('job-list')} />
           ) : (
             renderCurrentPage()
           )}
