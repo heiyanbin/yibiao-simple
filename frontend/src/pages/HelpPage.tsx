@@ -5,7 +5,7 @@
 import React, { useState, useEffect } from 'react';
 
 interface HelpPageProps {
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 const HelpPage: React.FC<HelpPageProps> = ({ onBack }) => {
@@ -64,15 +64,17 @@ const HelpPage: React.FC<HelpPageProps> = ({ onBack }) => {
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* 顶部工具栏 */}
-      <div className="mb-6">
-        <button
-          onClick={onBack}
-          className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
-        >
-          ← 返回
-        </button>
-      </div>
+      {/* 顶部工具栏 - 仅在登录后显示返回按钮 */}
+      {onBack && (
+        <div className="mb-6">
+          <button
+            onClick={onBack}
+            className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+          >
+            ← 返回
+          </button>
+        </div>
+      )}
 
       {/* 文档内容 */}
       <div

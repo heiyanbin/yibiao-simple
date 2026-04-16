@@ -112,7 +112,7 @@ function AppContent() {
     );
   }
 
-  // 未登录 - 显示提示页面
+  // 未登录 - 显示帮助文档
   if (!isAuthenticated) {
     return (
       <div className="h-screen flex bg-gray-50">
@@ -122,20 +122,9 @@ function AppContent() {
           onModelChange={updateModel}
         />
 
-        {/* 主区域 - 登录提示 */}
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center max-w-md">
-            <div className="text-6xl mb-6">📋</div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-4">
-              AI标书助手
-            </h1>
-            <p className="text-gray-600 mb-8">
-              请先登录以使用标书编写功能
-            </p>
-            <p className="text-sm text-gray-500">
-              点击左侧「登录 / 注册」按钮开始使用
-            </p>
-          </div>
+        {/* 主区域 - 帮助文档 */}
+        <div className="flex-1 p-6 overflow-y-auto">
+          <HelpPage />
         </div>
       </div>
     );
