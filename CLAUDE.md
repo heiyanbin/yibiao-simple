@@ -11,14 +11,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 开发环境启动
 ```bash
 # 一键启动（推荐）
-python app.py
+python app_launcher.py
 
 # 或使用批处理脚本（Windows）
 run.bat
 
 # 分别启动后端
 cd backend
-pip install -r requirements.txt  
+pip install -r requirements.txt
 python run.py
 
 # 分别启动前端
@@ -88,7 +88,8 @@ frontend/
 │   │   ├── ContentEdit.tsx       # 内容编辑页面
 │   │   ├── JobList.tsx           # 任务列表页面
 │   │   ├── PromptManage.tsx      # 提示词管理页面
-│   │   └── AdminPage.tsx         # 管理员后台页面
+│   │   ├── AdminPage.tsx         # 管理员后台页面
+│   │   └── HelpPage.tsx          # 帮助文档页面
 │   ├── contexts/            # React Context
 │   │   └── AuthContext.tsx  # 认证状态管理
 │   ├── services/
@@ -111,6 +112,7 @@ frontend/
 - 配置保存和加载：`POST /api/config/save`, `GET /api/config/load`
 - 模型列表获取：`POST /api/config/models`
 - 本地配置文件管理（存储在用户目录 `.ai_write_helper/`）
+- 帮助文档：`GET /api/config/help` - 返回 USAGE.html 内容
 
 #### 2. 文档处理 (backend/app/routers/document.py) 
 - 文件上传：`POST /api/document/upload`
@@ -199,13 +201,14 @@ API端点：
 - `GET /api/prompts/types/list` - 提示词类型列表
 
 ### 页面流程
-1. **登录页面** - 用户登录/注册（需邀请码），未登录时显示
-2. **任务列表页面** - 查看历史任务，创建新任务，恢复进行中的任务
-3. **标书解析页面** - 上传文档，使用AI提取项目概述和技术评分要求
-4. **目录编辑页面** - 基于解析结果生成专业标书目录结构，支持内容生成
-5. **正文编辑页面** - 查看和编辑各章节具体内容，支持统计和修改
-6. **提示词管理页面** - 用户自定义提示词CRUD，设置默认提示词
-7. **管理员后台** - 统计面板、用户管理、任务管理、邀请码管理（仅管理员）
+1. **帮助文档页面** - 未登录时显示帮助文档，引导用户了解系统功能
+2. **登录弹窗** - 用户点击左侧登录/注册按钮弹出认证弹窗
+3. **任务列表页面** - 查看历史任务，创建新任务，恢复进行中的任务
+4. **标书解析页面** - 上传文档，使用AI提取项目概述和技术评分要求
+5. **目录编辑页面** - 基于解析结果生成专业标书目录结构，支持内容生成
+6. **正文编辑页面** - 查看和编辑各章节具体内容，支持统计和修改
+7. **提示词管理页面** - 用户自定义提示词CRUD，设置默认提示词
+8. **管理员后台** - 统计面板、用户管理、任务管理、邀请码管理（仅管理员）
 
 ### API设计特点
 - RESTful API设计
